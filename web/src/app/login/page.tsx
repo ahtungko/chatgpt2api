@@ -8,12 +8,15 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { LocaleSwitchButton } from "@/components/locale-switch-button";
+import { useAppLocale } from "@/i18n/locale";
 import { login } from "@/lib/api";
 import { useRedirectIfAuthenticated } from "@/lib/use-auth-guard";
 import { getDefaultRouteForRole, setStoredAuthSession } from "@/store/auth";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { isEnglish } = useAppLocale();
   const [authKey, setAuthKey] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { isCheckingAuth } = useRedirectIfAuthenticated();
@@ -21,7 +24,7 @@ export default function LoginPage() {
   const handleLogin = async () => {
     const normalizedAuthKey = authKey.trim();
     if (!normalizedAuthKey) {
-      toast.error("请输入 密钥");
+      toast.error(isEnglish ? "Enter the access key" : "请输入密钥");
       return;
     }
 
@@ -36,7 +39,7 @@ export default function LoginPage() {
       });
       router.replace(getDefaultRouteForRole(data.role));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "登录失败";
+      const message = error instanceof Error ? error.message : isEnglish ? "Login failed" : "登录失败";
       toast.error(message);
     } finally {
       setIsSubmitting(false);
@@ -53,6 +56,9 @@ export default function LoginPage() {
 
   return (
     <div className="grid min-h-[calc(100vh-1rem)] w-full place-items-center px-4 py-6">
+      <div className="fixed top-6 right-6">
+        <LocaleSwitchButton className="h-9 rounded-full border-stone-200 bg-white/85 px-3 text-stone-700 shadow-sm" />
+      </div>
       <Card className="w-full max-w-[505px] rounded-[30px] border-white/80 bg-white/95 shadow-[0_28px_90px_rgba(28,25,23,0.10)]">
         <CardContent className="space-y-7 p-6 sm:p-8">
           <div className="space-y-4 text-center">
@@ -60,14 +66,18 @@ export default function LoginPage() {
               <LockKeyhole className="size-5" />
             </div>
             <div className="space-y-2">
-              <h1 className="text-3xl font-semibold tracking-tight text-stone-950">欢迎回来</h1>
-              <p className="text-sm leading-6 text-stone-500">输入密钥后继续使用账号管理和图片生成功能。</p>
+              <h1 className="text-3xl font-semibold tracking-tight text-stone-950">{isEnglish ? "Welcome back" : "欢迎回来"}</h1>
+              <p className="text-sm leading-6 text-stone-500">
+                {isEnglish
+                  ? "Enter your key to continue with account management and image generation."
+                  : "输入密钥后继续使用账号管理和图片生成功能。"}
+              </p>
             </div>
           </div>
 
           <div className="space-y-3">
             <label htmlFor="auth-key" className="block text-sm font-medium text-stone-700">
-              密钥
+              {isEnglish ? "Access key" : "密钥"}
             </label>
             <Input
               id="auth-key"
@@ -79,7 +89,7 @@ export default function LoginPage() {
                   void handleLogin();
                 }
               }}
-              placeholder="请输入密钥"
+              placeholder={isEnglish ? "Enter your key" : "请输入密钥"}
               className="h-13 rounded-2xl border-stone-200 bg-white px-4"
             />
           </div>
@@ -90,7 +100,7 @@ export default function LoginPage() {
             disabled={isSubmitting}
           >
             {isSubmitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
-            登录
+            {isEnglish ? "Log in" : "登录"}
           </Button>
         </CardContent>
       </Card>

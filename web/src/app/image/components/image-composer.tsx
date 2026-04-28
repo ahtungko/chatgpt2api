@@ -2,6 +2,7 @@
 import { ArrowUp, Check, ChevronDown, ImagePlus, LoaderCircle, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type RefObject } from "react";
 
+import type { ImagePageMessages } from "@/app/image/i18n";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ type ImageComposerProps = {
   onPickReferenceImage: () => void;
   onReferenceImageChange: (files: File[]) => void | Promise<void>;
   onRemoveReferenceImage: (index: number) => void;
+  messages: ImagePageMessages;
 };
 
 export function ImageComposer({
@@ -47,6 +49,7 @@ export function ImageComposer({
   onPickReferenceImage,
   onReferenceImageChange,
   onRemoveReferenceImage,
+  messages,
 }: ImageComposerProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
@@ -56,15 +59,8 @@ export function ImageComposer({
     () => referenceImages.map((image, index) => ({ id: `${image.name}-${index}`, src: image.dataUrl })),
     [referenceImages],
   );
-  const imageSizeOptions = [
-    { value: "", label: "未指定" },
-    { value: "1:1", label: "1:1 (正方形)" },
-    { value: "16:9", label: "16:9 (横版)" },
-    { value: "4:3", label: "4:3 (横版)" },
-    { value: "3:4", label: "3:4 (竖版)" },
-    { value: "9:16", label: "9:16 (竖版)" },
-  ];
-  const imageSizeLabel = imageSizeOptions.find((option) => option.value === imageSize)?.label || "未指定";
+  const imageSizeOptions = messages.composer.imageSizeOptions;
+  const imageSizeLabel = imageSizeOptions.find((option) => option.value === imageSize)?.label || imageSizeOptions[0]?.label || "";
 
   useEffect(() => {
     if (!isSizeMenuOpen) {
@@ -118,11 +114,11 @@ export function ImageComposer({
                     setLightboxOpen(true);
                   }}
                   className="group size-16 overflow-hidden rounded-2xl border border-stone-200 bg-stone-50 transition hover:border-stone-300"
-                  aria-label={`预览参考图 ${image.name || index + 1}`}
+                  aria-label={messages.composer.previewReferenceImage(String(image.name || index + 1))}
                 >
                   <img
                     src={image.dataUrl}
-                    alt={image.name || `参考图 ${index + 1}`}
+                    alt={image.name || messages.composer.referenceImageAlt(String(index + 1))}
                     className="h-full w-full object-cover"
                   />
                 </button>
@@ -133,7 +129,7 @@ export function ImageComposer({
                     onRemoveReferenceImage(index);
                   }}
                   className="absolute -right-1 -top-1 inline-flex size-5 items-center justify-center rounded-full border border-stone-200 bg-white text-stone-500 transition hover:border-stone-300 hover:text-stone-800"
-                  aria-label={`移除参考图 ${image.name || index + 1}`}
+                  aria-label={messages.composer.removeReferenceImage(String(image.name || index + 1))}
                 >
                   <X className="size-3" />
                 </button>
@@ -155,6 +151,7 @@ export function ImageComposer({
               open={lightboxOpen}
               onOpenChange={setLightboxOpen}
               onIndexChange={setLightboxIndex}
+              labels={messages.lightbox}
             />
             <Textarea
               ref={textareaRef}
@@ -162,7 +159,7 @@ export function ImageComposer({
               onChange={(event) => onPromptChange(event.target.value)}
               onPaste={handleTextareaPaste}
               placeholder={
-                mode === "edit" ? "描述你希望如何修改这张参考图，可直接粘贴图片" : "输入你想要生成的画面，也可直接粘贴图片"
+                mode === "edit" ? messages.composer.editPlaceholder : messages.composer.generatePlaceholder
               }
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -184,21 +181,25 @@ export function ImageComposer({
                       onClick={onPickReferenceImage}
                     >
                       <ImagePlus className="size-3.5 sm:size-4" />
-                      <span className="hidden sm:inline">{referenceImages.length > 0 ? "继续添加参考图" : "上传参考图"}</span>
-                      <span className="sm:hidden">{referenceImages.length > 0 ? "继续" : "上传"}</span>
+                      <span className="hidden sm:inline">
+                        {referenceImages.length > 0 ? messages.composer.continueAddReferenceImage : messages.composer.addReferenceImage}
+                      </span>
+                      <span className="sm:hidden">
+                        {referenceImages.length > 0 ? messages.composer.continueShort : messages.composer.uploadShort}
+                      </span>
                     </Button>
                   )}
                   <div className="rounded-full bg-stone-100 px-2 py-1 text-[10px] font-medium text-stone-600 sm:px-3 sm:py-2 sm:text-xs">
-                    <span className="hidden xs:inline">剩余额度 </span>{availableQuota}
+                    <span className="hidden xs:inline">{messages.composer.remainingQuota} </span>{availableQuota}
                   </div>
                   {activeTaskCount > 0 && (
                     <div className="flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 sm:gap-1.5 sm:px-3 sm:py-2 sm:text-xs">
                       <LoaderCircle className="size-3 animate-spin" />
-                      {activeTaskCount}<span className="hidden sm:inline"> 个任务处理中</span>
+                      {messages.composer.activeTasks(activeTaskCount)}
                     </div>
                   )}
                   <div className="flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2 py-0.5 sm:gap-2 sm:px-3 sm:py-1">
-                    <span className="text-[11px] font-medium text-stone-700 sm:text-sm">张数</span>
+                    <span className="text-[11px] font-medium text-stone-700 sm:text-sm">{messages.composer.count}</span>
                     <Input
                       type="number"
                       min="1"
@@ -213,7 +214,7 @@ export function ImageComposer({
                     ref={sizeMenuRef}
                     className="relative flex items-center gap-1.5 rounded-full border border-stone-200 bg-white px-2 py-0.5 text-[11px] sm:gap-2 sm:px-3 sm:py-1 sm:text-[13px]"
                   >
-                    <span className="font-medium text-stone-700 sm:text-sm">比例</span>
+                    <span className="font-medium text-stone-700 sm:text-sm">{messages.composer.ratio}</span>
                     <button
                       type="button"
                       className="flex h-7 w-[110px] items-center justify-between bg-transparent text-left text-xs font-bold text-stone-700 sm:h-8 sm:w-[132px]"
@@ -250,10 +251,10 @@ export function ImageComposer({
 
                   <div className="flex items-center gap-1.5 sm:gap-2">
                     <ModeButton active={mode === "generate"} onClick={() => onModeChange("generate")}>
-                      文生图
+                      {messages.composer.generateMode}
                     </ModeButton>
                     <ModeButton active={mode === "edit"} onClick={() => onModeChange("edit")}>
-                      图生图
+                      {messages.composer.editMode}
                     </ModeButton>
                   </div>
                 </div>
@@ -263,7 +264,7 @@ export function ImageComposer({
                   onClick={() => void onSubmit()}
                   disabled={!prompt.trim() || (mode === "edit" && referenceImages.length === 0)}
                   className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-stone-950 text-white transition hover:bg-stone-800 disabled:cursor-not-allowed disabled:bg-stone-300 sm:size-11"
-                  aria-label={mode === "edit" ? "编辑图片" : "生成图片"}
+                  aria-label={mode === "edit" ? messages.composer.submitEdit : messages.composer.submitGenerate}
                 >
                   <ArrowUp className="size-3.5 sm:size-4" />
                 </button>

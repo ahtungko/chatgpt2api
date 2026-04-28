@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, Copy, ImageIcon, LoaderCircle, Maximize2, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 
@@ -8,6 +8,7 @@ import { DateRangeFilter } from "@/components/date-range-filter";
 import { ImageLightbox } from "@/components/image-lightbox";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useTranslate } from "@/i18n/locale";
 import { fetchManagedImages, type ManagedImage } from "@/lib/api";
 import { useAuthGuard } from "@/lib/use-auth-guard";
 
@@ -16,6 +17,7 @@ function formatSize(size: number) {
 }
 
 function ImageManagerContent() {
+  const t = useTranslate();
   const [items, setItems] = useState<ManagedImage[]>([]);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -35,18 +37,18 @@ function ImageManagerContent() {
   const safePage = Math.min(page, pageCount);
   const currentRows = items.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  const loadImages = async () => {
+  const loadImages = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await fetchManagedImages({ start_date: startDate, end_date: endDate });
       setItems(data.items);
       setPage(1);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载图片失败");
+      toast.error(error instanceof Error ? error.message : t("加载图片失败", "Failed to load images"));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [endDate, startDate, t]);
 
   const clearFilters = () => {
     setStartDate("");
@@ -54,24 +56,30 @@ function ImageManagerContent() {
   };
 
   useEffect(() => {
-    void loadImages();
-  }, [startDate, endDate]);
+    const timer = window.setTimeout(() => {
+      void loadImages();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [loadImages]);
 
   return (
     <section className="space-y-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-1">
           <div className="text-xs font-semibold tracking-[0.18em] text-stone-500 uppercase">Images</div>
-          <h1 className="text-2xl font-semibold tracking-tight">图片管理</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("图片管理", "Image Manager")}</h1>
         </div>
         <div className="flex flex-wrap gap-2">
           <DateRangeFilter startDate={startDate} endDate={endDate} onChange={(start, end) => { setStartDate(start); setEndDate(end); }} />
           <Button variant="outline" onClick={clearFilters} className="h-10 rounded-xl border-stone-200 bg-white px-4 text-stone-700">
-            清除筛选条件
+            {t("清除筛选条件", "Clear filters")}
           </Button>
           <Button onClick={() => void loadImages()} disabled={isLoading} className="h-10 rounded-xl bg-stone-950 px-4 text-white hover:bg-stone-800">
             {isLoading ? <LoaderCircle className="size-4 animate-spin" /> : <Search className="size-4" />}
-            查询
+            {t("查询", "Search")}
           </Button>
         </div>
       </div>
@@ -81,11 +89,11 @@ function ImageManagerContent() {
           <div className="flex items-center justify-between border-b border-stone-100 px-5 py-4">
             <div className="flex items-center gap-2 text-sm text-stone-600">
               <ImageIcon className="size-4" />
-              共 {items.length} 张
+              {t(`共 ${items.length} 张`, `${items.length} images`)}
             </div>
             <Button variant="ghost" className="h-8 rounded-lg px-3 text-stone-500" onClick={() => void loadImages()} disabled={isLoading}>
               <RefreshCw className={`size-4 ${isLoading ? "animate-spin" : ""}`} />
-              刷新
+              {t("刷新", "Refresh")}
             </Button>
           </div>
           <div className="grid gap-0 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -129,7 +137,7 @@ function ImageManagerContent() {
                       className="size-8 rounded-lg text-stone-400 hover:bg-stone-100 hover:text-stone-700"
                       onClick={() => {
                         void navigator.clipboard.writeText(item.url);
-                        toast.success("图片地址已复制");
+                        toast.success(t("图片地址已复制", "Image URL copied"));
                       }}
                     >
                       <Copy className="size-4" />
@@ -144,7 +152,7 @@ function ImageManagerContent() {
             )})}
           </div>
           <div className="flex items-center justify-end gap-2 border-t border-stone-100 px-4 py-3 text-sm text-stone-500">
-            <span>第 {safePage} / {pageCount} 页，共 {items.length} 张</span>
+            <span>{t(`第 ${safePage} / ${pageCount} 页，共 ${items.length} 张`, `Page ${safePage} / ${pageCount}, ${items.length} images`)}</span>
             <Button variant="outline" size="icon" className="size-9 rounded-lg border-stone-200 bg-white" disabled={safePage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))}>
               <ChevronLeft className="size-4" />
             </Button>
@@ -152,7 +160,7 @@ function ImageManagerContent() {
               <ChevronRight className="size-4" />
             </Button>
           </div>
-          {!isLoading && items.length === 0 ? <div className="px-6 py-14 text-center text-sm text-stone-500">没有找到图片</div> : null}
+          {!isLoading && items.length === 0 ? <div className="px-6 py-14 text-center text-sm text-stone-500">{t("没有找到图片", "No images found")}</div> : null}
         </CardContent>
       </Card>
       <ImageLightbox

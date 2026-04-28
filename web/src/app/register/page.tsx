@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { LoaderCircle } from "lucide-react";
 
 import webConfig from "@/constants/common-env";
+import { useTranslate } from "@/i18n/locale";
 import { useAuthGuard } from "@/lib/use-auth-guard";
 import type { RegisterConfig } from "@/lib/api";
 import { getStoredAuthKey } from "@/store/auth";
@@ -43,13 +44,14 @@ function RegisterDataController() {
 }
 
 function RegisterPageContent() {
+  const t = useTranslate();
   return (
     <>
       <RegisterDataController />
       <section className="mb-2 flex flex-col gap-1 lg:flex-row lg:items-start lg:justify-between">
         <div className="space-y-1">
           <div className="text-xs font-semibold tracking-[0.18em] text-stone-500 uppercase">Register</div>
-          <h1 className="text-2xl font-semibold tracking-tight">ChatGPT注册机</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("ChatGPT注册机", "ChatGPT Register")}</h1>
         </div>
       </section>
       <section>

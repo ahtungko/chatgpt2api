@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Clock3, LoaderCircle, Sparkles } from "lucide-react";
 
+import type { ImagePageMessages } from "@/app/image/i18n";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ImageConversation, ImageTurnStatus, StoredImage, StoredReferenceImage } from "@/store/image-conversations";
@@ -19,6 +20,7 @@ type ImageResultsProps = {
   onOpenLightbox: (images: ImageLightboxItem[], index: number) => void;
   onContinueEdit: (conversationId: string, image: StoredImage | StoredReferenceImage) => void;
   formatConversationTime: (value: string) => string;
+  messages: ImagePageMessages;
 };
 
 export function ImageResults({
@@ -26,6 +28,7 @@ export function ImageResults({
   onOpenLightbox,
   onContinueEdit,
   formatConversationTime,
+  messages,
 }: ImageResultsProps) {
   const [imageDimensions, setImageDimensions] = useState<Record<string, string>>({});
 
@@ -49,7 +52,7 @@ export function ImageResults({
               fontFamily: '"Palatino Linotype","Book Antiqua","URW Palladio L","Times New Roman",serif',
             }}
           >
-            Turn ideas into images
+            {messages.results.emptyTitle}
           </h1>
           <p
             className="mt-4 text-[15px] italic tracking-[0.01em] text-stone-500"
@@ -57,7 +60,7 @@ export function ImageResults({
               fontFamily: '"Palatino Linotype","Book Antiqua","URW Palladio L","Times New Roman",serif',
             }}
           >
-            在同一窗口里保留本地历史与任务状态，并从已有结果图继续发起新的无状态编辑。
+            {messages.results.emptyDescription}
           </p>
         </div>
       </div>
@@ -89,11 +92,11 @@ export function ImageResults({
             <div className="flex justify-end">
               <div className="max-w-[82%] px-1 py-1 text-[15px] leading-7 text-stone-900">
                 <div className="mb-2 flex flex-wrap justify-end gap-2 text-[11px] text-stone-400">
-                  <span>第 {turnIndex + 1} 轮</span>
+                  <span>{messages.results.turn(turnIndex + 1)}</span>
                   <span>
-                    {turn.mode === "edit" ? "编辑图" : "文生图"}
+                    {turn.mode === "edit" ? messages.results.editMode : messages.results.generateMode}
                   </span>
-                  <span>{getTurnStatusLabel(turn.status)}</span>
+                  <span>{getTurnStatusLabel(turn.status, messages)}</span>
                   <span>{formatConversationTime(turn.createdAt)}</span>
                 </div>
                 <div className="text-right">{turn.prompt}</div>
@@ -104,7 +107,7 @@ export function ImageResults({
               <div className="w-full p-1">
                 {turn.referenceImages.length > 0 ? (
                   <div className="mb-4 flex flex-col items-end">
-                    <div className="mb-3 text-xs font-medium text-stone-500">本轮参考图</div>
+                    <div className="mb-3 text-xs font-medium text-stone-500">{messages.results.referenceImages}</div>
                     <div className="flex flex-wrap justify-end gap-3">
                       {turn.referenceImages.map((image, index) => (
                         <div key={`${turn.id}-${image.name}-${index}`} className="flex flex-col items-end gap-2">
@@ -112,11 +115,11 @@ export function ImageResults({
                             type="button"
                             onClick={() => onOpenLightbox(referenceLightboxImages, index)}
                             className="group relative h-24 w-24 overflow-hidden border border-stone-200/80 bg-stone-100/60 text-left transition hover:border-stone-300"
-                            aria-label={`预览参考图 ${image.name || index + 1}`}
+                            aria-label={messages.results.previewReferenceImage(String(image.name || index + 1))}
                           >
                             <img
                               src={image.dataUrl}
-                              alt={image.name || `参考图 ${index + 1}`}
+                              alt={image.name || messages.results.referenceImageAlt(String(index + 1))}
                               className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:scale-[1.02]"
                             />
                           </button>
@@ -127,7 +130,7 @@ export function ImageResults({
                             onClick={() => onContinueEdit(selectedConversation.id, image)}
                           >
                             <Sparkles className="size-4" />
-                            加入编辑
+                            {messages.results.addToEdit}
                           </Button>
                         </div>
                       ))}
@@ -136,10 +139,10 @@ export function ImageResults({
                 ) : null}
 
                 <div className="mb-4 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-                  <span className="rounded-full bg-stone-100 px-3 py-1">{turn.count} 张</span>
-                  <span className="rounded-full bg-stone-100 px-3 py-1">{getTurnStatusLabel(turn.status)}</span>
+                  <span className="rounded-full bg-stone-100 px-3 py-1">{messages.results.images(turn.count)}</span>
+                  <span className="rounded-full bg-stone-100 px-3 py-1">{getTurnStatusLabel(turn.status, messages)}</span>
                   {turn.status === "queued" ? (
-                    <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">等待当前对话中的前序任务完成</span>
+                    <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">{messages.results.waitingQueue}</span>
                   ) : null}
                 </div>
 
@@ -163,7 +166,7 @@ export function ImageResults({
                           >
                             <img
                               src={`data:image/png;base64,${image.b64_json}`}
-                              alt={`Generated result ${index + 1}`}
+                              alt={messages.results.generatedResultAlt(index + 1)}
                               className="block h-auto w-full transition duration-200 group-hover:brightness-90"
                               onLoad={(event) => {
                                 updateImageDimensions(
@@ -176,7 +179,7 @@ export function ImageResults({
                           </button>
                           <div className="flex items-center justify-between gap-2 px-3 py-3">
                             <div className="min-w-0 text-xs text-stone-500">
-                              <span>结果 {index + 1}</span>
+                              <span>{messages.results.result(index + 1)}</span>
                               {imageMeta ? <span className="ml-2 text-stone-400">{imageMeta}</span> : null}
                             </div>
                             <Button
@@ -186,7 +189,7 @@ export function ImageResults({
                               onClick={() => onContinueEdit(selectedConversation.id, image)}
                             >
                               <Sparkles className="size-4" />
-                              加入编辑
+                              {messages.results.addToEdit}
                             </Button>
                           </div>
                         </div>
@@ -208,7 +211,7 @@ export function ImageResults({
                           )}
                         >
                           <div className="flex h-full items-center justify-center px-6 py-8 text-center text-sm leading-6 text-rose-600">
-                            {image.error || "生成失败"}
+                            {image.error || messages.results.generationFailed}
                           </div>
                         </div>
                       );
@@ -235,7 +238,7 @@ export function ImageResults({
                               <LoaderCircle className="size-5 animate-spin" />
                             )}
                           </div>
-                          <p className="text-sm">{turn.status === "queued" ? "已加入当前对话队列..." : "正在处理图片..."}</p>
+                          <p className="text-sm">{turn.status === "queued" ? messages.results.queuedProcessing : messages.results.processing}</p>
                         </div>
                       </div>
                     );
@@ -256,17 +259,17 @@ export function ImageResults({
   );
 }
 
-function getTurnStatusLabel(status: ImageTurnStatus) {
+function getTurnStatusLabel(status: ImageTurnStatus, messages: ImagePageMessages) {
   if (status === "queued") {
-    return "排队中";
+    return messages.status.queued;
   }
   if (status === "generating") {
-    return "处理中";
+    return messages.status.generating;
   }
   if (status === "success") {
-    return "已完成";
+    return messages.status.success;
   }
-  return "失败";
+  return messages.status.error;
 }
 
 function formatBase64ImageSize(base64: string) {

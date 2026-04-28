@@ -4,7 +4,7 @@ import { useCallback, useEffect } from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, Download, X } from "lucide-react";
 
-import { cn } from "@/lib/utils";
+import { useAppLocale } from "@/i18n/locale";
 
 type LightboxImage = {
   id: string;
@@ -19,6 +19,13 @@ type ImageLightboxProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onIndexChange: (index: number) => void;
+  labels?: {
+    title?: string;
+    download?: string;
+    close?: string;
+    previous?: string;
+    next?: string;
+  };
 };
 
 export function ImageLightbox({
@@ -27,10 +34,20 @@ export function ImageLightbox({
   open,
   onOpenChange,
   onIndexChange,
+  labels,
 }: ImageLightboxProps) {
+  const { isEnglish } = useAppLocale();
   const current = images[currentIndex];
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex < images.length - 1;
+  const mergedLabels = {
+    title: isEnglish ? "Image preview" : "图片预览",
+    download: isEnglish ? "Download image" : "下载图片",
+    close: isEnglish ? "Close" : "关闭",
+    previous: isEnglish ? "Previous image" : "上一张",
+    next: isEnglish ? "Next image" : "下一张",
+    ...labels,
+  };
 
   const goPrev = useCallback(() => {
     if (hasPrev) onIndexChange(currentIndex - 1);
@@ -76,7 +93,7 @@ export function ImageLightbox({
           onPointerDownOutside={(e) => e.preventDefault()}
         >
           <DialogPrimitive.Title className="sr-only">
-            图片预览
+            {mergedLabels.title}
           </DialogPrimitive.Title>
 
           {/* toolbar */}
@@ -95,13 +112,13 @@ export function ImageLightbox({
               type="button"
               onClick={handleDownload}
               className="inline-flex size-9 items-center justify-center rounded-full bg-black/50 text-white/90 transition hover:bg-black/70"
-              aria-label="下载图片"
+              aria-label={mergedLabels.download}
             >
               <Download className="size-4" />
             </button>
             <DialogPrimitive.Close className="inline-flex size-9 items-center justify-center rounded-full bg-black/50 text-white/90 transition hover:bg-black/70">
               <X className="size-4" />
-              <span className="sr-only">关闭</span>
+              <span className="sr-only">{mergedLabels.close}</span>
             </DialogPrimitive.Close>
           </div>
 
@@ -111,7 +128,7 @@ export function ImageLightbox({
               type="button"
               onClick={goPrev}
               className="absolute left-4 z-10 inline-flex size-10 items-center justify-center rounded-full bg-black/40 text-white/90 transition hover:bg-black/60"
-              aria-label="上一张"
+              aria-label={mergedLabels.previous}
             >
               <ChevronLeft className="size-5" />
             </button>
@@ -137,7 +154,7 @@ export function ImageLightbox({
               type="button"
               onClick={goNext}
               className="absolute right-4 z-10 inline-flex size-10 items-center justify-center rounded-full bg-black/40 text-white/90 transition hover:bg-black/60"
-              aria-label="下一张"
+              aria-label={mergedLabels.next}
             >
               <ChevronRight className="size-5" />
             </button>

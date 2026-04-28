@@ -4,6 +4,7 @@ import { format, parse } from "date-fns";
 import { CalendarIcon } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 
+import { useAppLocale } from "@/i18n/locale";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Field } from "@/components/ui/field";
@@ -16,6 +17,7 @@ type DateRangeFilterProps = {
 };
 
 export function DateRangeFilter({ startDate, endDate, onChange }: DateRangeFilterProps) {
+  const { isEnglish } = useAppLocale();
   const selected: DateRange | undefined = startDate
     ? {
         from: parse(startDate, "yyyy-MM-dd", new Date()),
@@ -23,7 +25,11 @@ export function DateRangeFilter({ startDate, endDate, onChange }: DateRangeFilte
       }
     : undefined;
 
-  const label = startDate ? `${startDate} 至 ${endDate || startDate}` : "选择日期范围";
+  const label = startDate
+    ? `${startDate} ${isEnglish ? "to" : "至"} ${endDate || startDate}`
+    : isEnglish
+      ? "Select date range"
+      : "选择日期范围";
 
   return (
     <Field className="w-[240px]">

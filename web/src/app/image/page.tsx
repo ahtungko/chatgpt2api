@@ -7,6 +7,10 @@ import { toast } from "sonner";
 import { ImageComposer } from "@/app/image/components/image-composer";
 import { ImageResults, type ImageLightboxItem } from "@/app/image/components/image-results";
 import { ImageSidebar } from "@/app/image/components/image-sidebar";
+import {
+  getImagePageMessages,
+  type ImagePageMessages,
+} from "@/app/image/i18n";
 import { ImageLightbox } from "@/components/image-lightbox";
 import {
   Dialog,
@@ -17,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useAppLocale } from "@/i18n/locale";
 import { editImage, fetchAccounts, generateImage, type Account } from "@/lib/api";
 import { useAuthGuard } from "@/lib/use-auth-guard";
 import {
@@ -46,12 +51,12 @@ function buildConversationTitle(prompt: string) {
   return `${trimmed.slice(0, 12)}...`;
 }
 
-function formatConversationTime(value: string) {
+function formatConversationTime(value: string, localeTag: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return "";
   }
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(localeTag, {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
@@ -71,11 +76,11 @@ function createId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function readFileAsDataUrl(file: File) {
+function readFileAsDataUrl(file: File, readErrorMessage: string) {
   return new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(new Error("读取参考图失败"));
+    reader.onerror = () => reject(new Error(readErrorMessage));
     reader.readAsDataURL(file);
   });
 }
@@ -114,7 +119,7 @@ function sortImageConversations(conversations: ImageConversation[]) {
   return [...conversations].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-async function recoverConversationHistory(items: ImageConversation[]) {
+async function recoverConversationHistory(items: ImageConversation[], messages: ImagePageMessages) {
   const normalized = items.map((conversation) => {
     let changed = false;
 
@@ -125,7 +130,7 @@ async function recoverConversationHistory(items: ImageConversation[]) {
 
       const loadingCount = turn.images.filter((image) => image.status === "loading").length;
       if (loadingCount > 0) {
-        const message = "页面刷新或任务中断，未完成的图片已标记为失败";
+        const message = messages.toasts.interruptedImagesMarkedFailed;
         changed = true;
         return {
           ...turn,
@@ -141,7 +146,7 @@ async function recoverConversationHistory(items: ImageConversation[]) {
       const successCount = turn.images.filter((image) => image.status === "success").length;
       const nextStatus: ImageTurnStatus =
         failedCount > 0 ? "error" : successCount > 0 ? "success" : "queued";
-      const nextError = failedCount > 0 ? turn.error || `其中 ${failedCount} 张未成功生成` : undefined;
+      const nextError = failedCount > 0 ? turn.error || messages.toasts.someImagesFailed(failedCount) : undefined;
       if (nextStatus === turn.status && nextError === turn.error) {
         return turn;
       }
@@ -180,6 +185,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   const resultsViewportRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { locale } = useAppLocale();
 
   const [imagePrompt, setImagePrompt] = useState("");
   const [imageCount, setImageCount] = useState("1");
@@ -191,12 +197,14 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   const [conversations, setConversations] = useState<ImageConversation[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
-  const [availableQuota, setAvailableQuota] = useState("加载中...");
+  const [availableQuota, setAvailableQuota] = useState<string | null>(null);
   const [lightboxImages, setLightboxImages] = useState<ImageLightboxItem[]>([]);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "one"; id: string } | { type: "all" } | null>(null);
 
+  const messages = useMemo(() => getImagePageMessages(locale), [locale]);
+  const messagesRef = useRef(messages);
   const parsedCount = useMemo(() => Math.max(1, Math.min(10, Number(imageCount) || 1)), [imageCount]);
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.id === selectedConversationId) ?? null,
@@ -210,17 +218,32 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
       }, 0),
     [conversations],
   );
-  const deleteConfirmTitle = deleteConfirm?.type === "all" ? "清空历史记录" : deleteConfirm?.type === "one" ? "删除对话" : "";
+  const deleteConfirmTitle =
+    deleteConfirm?.type === "all"
+      ? messages.dialogs.clearHistoryTitle
+      : deleteConfirm?.type === "one"
+        ? messages.dialogs.deleteConversationTitle
+        : "";
   const deleteConfirmDescription =
     deleteConfirm?.type === "all"
-      ? "确认删除全部图片历史记录吗？删除后无法恢复。"
+      ? messages.dialogs.clearHistoryDescription
       : deleteConfirm?.type === "one"
-        ? "确认删除这条图片对话吗？删除后无法恢复。"
+        ? messages.dialogs.deleteConversationDescription
         : "";
+  const formattedAvailableQuota = availableQuota ?? messages.quotaLoading;
+  const getMessages = useCallback(() => messagesRef.current, []);
+  const formatConversationTimeValue = useCallback(
+    (value: string) => formatConversationTime(value, messages.localeTag),
+    [messages.localeTag],
+  );
 
   useEffect(() => {
     conversationsRef.current = conversations;
   }, [conversations]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     let cancelled = false;
@@ -231,7 +254,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         setImageSize(storedSize || "");
 
         const items = await listImageConversations();
-        const normalizedItems = await recoverConversationHistory(items);
+        const normalizedItems = await recoverConversationHistory(items, getMessages());
         if (cancelled) {
           return;
         }
@@ -246,7 +269,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             : null) ?? pickFallbackConversationId(normalizedItems);
         setSelectedConversationId(nextSelectedConversationId);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "读取会话记录失败";
+        const message = error instanceof Error ? error.message : getMessages().toasts.readHistoryFailed;
         toast.error(message);
       } finally {
         if (!cancelled) {
@@ -259,20 +282,21 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [getMessages]);
 
   const loadQuota = useCallback(async () => {
+    const currentMessages = getMessages();
     if (!isAdmin) {
-      setAvailableQuota("--");
+      setAvailableQuota(currentMessages.unavailableValue);
       return;
     }
     try {
       const data = await fetchAccounts();
       setAvailableQuota(formatAvailableQuota(data.items));
     } catch {
-      setAvailableQuota((prev) => (prev === "加载中..." ? "--" : prev));
+      setAvailableQuota((prev) => prev ?? currentMessages.unavailableValue);
     }
-  }, [isAdmin]);
+  }, [getMessages, isAdmin]);
 
   useEffect(() => {
     if (didLoadQuotaRef.current) {
@@ -328,7 +352,14 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
 
   useEffect(() => {
     if (selectedConversationId && !conversations.some((conversation) => conversation.id === selectedConversationId)) {
-      setSelectedConversationId(pickFallbackConversationId(conversations));
+      const nextConversationId = pickFallbackConversationId(conversations);
+      const timer = window.setTimeout(() => {
+        setSelectedConversationId(nextConversationId);
+      }, 0);
+
+      return () => {
+        window.clearTimeout(timer);
+      };
     }
   }, [conversations, selectedConversationId]);
 
@@ -396,7 +427,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     try {
       await deleteImageConversation(id);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "删除会话失败";
+      const message = error instanceof Error ? error.message : getMessages().toasts.deleteConversationFailed;
       toast.error(message);
       const items = await listImageConversations();
       conversationsRef.current = items;
@@ -411,9 +442,9 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
       setConversations([]);
       setSelectedConversationId(null);
       resetComposer();
-      toast.success("已清空历史记录");
+      toast.success(getMessages().toasts.historyCleared);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "清空历史记录失败";
+      const message = error instanceof Error ? error.message : getMessages().toasts.clearHistoryFailed;
       toast.error(message);
     }
   };
@@ -447,11 +478,12 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     }
 
     try {
+      const currentMessages = getMessages();
       const previews = await Promise.all(
         files.map(async (file) => ({
           name: file.name,
           type: file.type || "image/png",
-          dataUrl: await readFileAsDataUrl(file),
+          dataUrl: await readFileAsDataUrl(file, currentMessages.toasts.readReferenceImageFailed),
         })),
       );
 
@@ -462,10 +494,10 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         fileInputRef.current.value = "";
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : "读取参考图失败";
+      const message = error instanceof Error ? error.message : getMessages().toasts.readReferenceImageFailed;
       toast.error(message);
     }
-  }, []);
+  }, [getMessages]);
 
   const handleReferenceImageChange = useCallback(
     async (files: File[]) => {
@@ -508,9 +540,9 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
       ]);
       setImagePrompt("");
       textareaRef.current?.focus();
-      toast.success("已加入当前参考图，继续输入描述即可编辑");
+      toast.success(getMessages().toasts.referenceImageAdded);
     },
-    [],
+    [getMessages],
   );
 
   const openLightbox = useCallback((images: ImageLightboxItem[], index: number) => {
@@ -526,6 +558,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   /* eslint-disable react-hooks/preserve-manual-memoization */
   const runConversationQueue = useCallback(
     async (conversationId: string) => {
+      const currentMessages = getMessages();
       if (activeConversationQueueIds.has(conversationId)) {
         return;
       }
@@ -561,7 +594,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         const pendingImages = queuedTurn.images.filter((image) => image.status === "loading");
 
         if (queuedTurn.mode === "edit" && referenceFiles.length === 0) {
-          throw new Error("未找到可用于继续编辑的参考图");
+          throw new Error(currentMessages.toasts.missingEditableReferenceImage);
         }
 
         if (pendingImages.length === 0) {
@@ -577,7 +610,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
                   ? {
                       ...turn,
                       status: existingFailedCount > 0 ? "error" : existingSuccessCount > 0 ? "success" : "queued",
-                      error: existingFailedCount > 0 ? `其中 ${existingFailedCount} 张未成功生成` : undefined,
+                      error: existingFailedCount > 0 ? currentMessages.toasts.someImagesFailed(existingFailedCount) : undefined,
                     }
                   : turn,
               ),
@@ -594,7 +627,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
                 : await generateImage(queuedTurn.prompt, queuedTurn.model, queuedTurn.size);
             const first = data.data?.[0];
             if (!first?.b64_json) {
-              throw new Error("未返回图片数据");
+              throw new Error(currentMessages.toasts.noImageData);
             }
 
             const nextImage: StoredImage = {
@@ -625,7 +658,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
 
             return nextImage;
           } catch (error) {
-            const message = error instanceof Error ? error.message : "生成失败";
+            const message = error instanceof Error ? error.message : currentMessages.results.generationFailed;
             const failedImage: StoredImage = {
               id: pendingImage.id,
               status: "error",
@@ -672,20 +705,20 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             ...conversation,
             updatedAt: new Date().toISOString(),
             turns: conversation.turns.map((turn) =>
-              turn.id === queuedTurn.id
-                ? {
-                    ...turn,
-                    status: failedCount > 0 ? "error" : "success",
-                    error: failedCount > 0 ? `其中 ${failedCount} 张未成功生成` : undefined,
-                  }
-                : turn,
+                turn.id === queuedTurn.id
+                  ? {
+                      ...turn,
+                      status: failedCount > 0 ? "error" : "success",
+                      error: failedCount > 0 ? currentMessages.toasts.someImagesFailed(failedCount) : undefined,
+                    }
+                  : turn,
             ),
           };
         });
 
         await loadQuota();
       } catch (error) {
-        const message = error instanceof Error ? error.message : "生成图片失败";
+        const message = error instanceof Error ? error.message : currentMessages.toasts.generationFailed;
         await updateConversation(conversationId, (current) => {
           const conversation = current ?? snapshot;
           return {
@@ -718,7 +751,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         }
       }
     },
-    [loadQuota, updateConversation],
+    [getMessages, loadQuota, updateConversation],
   );
   /* eslint-enable react-hooks/preserve-manual-memoization */
 
@@ -734,14 +767,15 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
   }, [conversations, runConversationQueue]);
 
   const handleSubmit = async () => {
+    const currentMessages = getMessages();
     const prompt = imagePrompt.trim();
     if (!prompt) {
-      toast.error("请输入提示词");
+      toast.error(currentMessages.toasts.enterPrompt);
       return;
     }
 
     if (imageMode === "edit" && referenceImageFiles.length === 0) {
-      toast.error("请先上传参考图");
+      toast.error(currentMessages.toasts.uploadReferenceFirst);
       return;
     }
 
@@ -789,17 +823,20 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
 
     const targetStats = getImageConversationStats(baseConversation);
     if (targetStats.running > 0 || targetStats.queued > 1) {
-      toast.success("已加入当前对话队列");
+      toast.success(currentMessages.toasts.queuedInConversation);
     } else if (!targetConversation) {
-      toast.success("已创建新对话并开始处理");
+      toast.success(currentMessages.toasts.createdAndStarted);
     } else {
-      toast.success("已发送到当前对话");
+      toast.success(currentMessages.toasts.sentToConversation);
     }
   };
 
   return (
     <>
-      <section className="mx-auto grid h-[calc(100vh-5rem)] min-h-0 w-full max-w-[1380px] grid-cols-1 gap-3 px-3 pb-6 lg:grid-cols-[240px_minmax(0,1fr)]">
+      <section
+        lang={messages.localeTag}
+        className="mx-auto grid h-[calc(100vh-5rem)] min-h-0 w-full max-w-[1380px] grid-cols-1 gap-3 px-3 pb-6 lg:grid-cols-[240px_minmax(0,1fr)]"
+      >
         <div className="hidden h-full min-h-0 border-r border-stone-200/70 pr-3 lg:block">
           <ImageSidebar
             conversations={conversations}
@@ -809,7 +846,8 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             onClearHistory={openClearHistoryConfirm}
             onSelectConversation={setSelectedConversationId}
             onDeleteConversation={openDeleteConversationConfirm}
-            formatConversationTime={formatConversationTime}
+            formatConversationTime={formatConversationTimeValue}
+            messages={messages}
           />
         </div>
 
@@ -818,8 +856,11 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             <DialogHeader className="px-6 pt-6 pb-2">
               <DialogTitle className="flex items-center gap-2 text-lg font-bold">
                 <History className="size-5" />
-                历史记录
+                {messages.actions.history}
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                {messages.sidebar.emptyHistory}
+              </DialogDescription>
             </DialogHeader>
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-8">
               <ImageSidebar
@@ -836,7 +877,8 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
                   setIsHistoryOpen(false);
                 }}
                 onDeleteConversation={openDeleteConversationConfirm}
-                formatConversationTime={formatConversationTime}
+                formatConversationTime={formatConversationTimeValue}
+                messages={messages}
                 hideActionButtons
               />
             </div>
@@ -851,20 +893,21 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
               onClick={() => setIsHistoryOpen(true)}
             >
               <History className="mr-2 size-4" />
-              历史记录 ({conversations.length})
+              {messages.historyButton(conversations.length)}
             </Button>
             <Button
               className="h-10 rounded-2xl bg-stone-950 text-white shadow-sm"
               onClick={handleCreateDraft}
             >
               <Plus className="size-4" />
-              新建
+              {messages.actions.newShort}
             </Button>
             <Button
               variant="outline"
               className="h-10 rounded-2xl border-stone-200 bg-white/85 px-3 text-stone-600 shadow-sm"
               onClick={openClearHistoryConfirm}
               disabled={conversations.length === 0}
+              aria-label={messages.actions.clearHistory}
             >
               <Trash2 className="size-4" />
             </Button>
@@ -878,7 +921,8 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
               selectedConversation={selectedConversation}
               onOpenLightbox={openLightbox}
               onContinueEdit={handleContinueEdit}
-              formatConversationTime={formatConversationTime}
+              formatConversationTime={formatConversationTimeValue}
+              messages={messages}
             />
           </div>
 
@@ -887,7 +931,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             prompt={imagePrompt}
             imageCount={imageCount}
             imageSize={imageSize}
-            availableQuota={availableQuota}
+            availableQuota={formattedAvailableQuota}
             activeTaskCount={activeTaskCount}
             referenceImages={referenceImages}
             textareaRef={textareaRef}
@@ -900,6 +944,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             onPickReferenceImage={() => fileInputRef.current?.click()}
             onReferenceImageChange={handleReferenceImageChange}
             onRemoveReferenceImage={handleRemoveReferenceImage}
+            messages={messages}
           />
         </div>
       </section>
@@ -910,6 +955,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         open={lightboxOpen}
         onOpenChange={setLightboxOpen}
         onIndexChange={setLightboxIndex}
+        labels={messages.lightbox}
       />
 
       {deleteConfirm ? (
@@ -923,10 +969,10 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
             </DialogHeader>
             <DialogFooter>
               <Button variant="outline" onClick={() => setDeleteConfirm(null)}>
-                取消
+                {messages.actions.cancel}
               </Button>
               <Button className="bg-rose-600 text-white hover:bg-rose-700" onClick={() => void handleConfirmDelete()}>
-                确认删除
+                {messages.actions.confirmDelete}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Ban, CheckCircle2, Copy, KeyRound, LoaderCircle, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { useAppLocale, useTranslate } from "@/i18n/locale";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { createUserKey, deleteUserKey, fetchUserKeys, updateUserKey, type UserKey } from "@/lib/api";
 
-function formatDateTime(value?: string | null) {
+function formatDateTime(value?: string | null, isEnglish = false) {
   if (!value) {
     return "—";
   }
@@ -26,7 +27,7 @@ function formatDateTime(value?: string | null) {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(isEnglish ? "en-US" : "zh-CN", {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -36,6 +37,8 @@ function formatDateTime(value?: string | null) {
 }
 
 export function UserKeysCard() {
+  const t = useTranslate();
+  const { isEnglish } = useAppLocale();
   const didLoadRef = useRef(false);
   const [items, setItems] = useState<UserKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -46,17 +49,17 @@ export function UserKeysCard() {
   const [revealedKey, setRevealedKey] = useState("");
   const [deletingItem, setDeletingItem] = useState<UserKey | null>(null);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await fetchUserKeys();
       setItems(data.items);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "加载用户密钥失败");
+      toast.error(error instanceof Error ? error.message : t("加载用户密钥失败", "Failed to load user keys"));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [t]);
 
   useEffect(() => {
     if (didLoadRef.current) {
@@ -64,7 +67,7 @@ export function UserKeysCard() {
     }
     didLoadRef.current = true;
     void load();
-  }, []);
+  }, [load]);
 
   const handleCreate = async () => {
     setIsCreating(true);
@@ -74,9 +77,9 @@ export function UserKeysCard() {
       setRevealedKey(data.key);
       setName("");
       setIsDialogOpen(false);
-      toast.success("用户密钥已创建");
+      toast.success(t("用户密钥已创建", "User key created"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "创建用户密钥失败");
+      toast.error(error instanceof Error ? error.message : t("创建用户密钥失败", "Failed to create user key"));
     } finally {
       setIsCreating(false);
     }
@@ -99,9 +102,9 @@ export function UserKeysCard() {
     try {
       const data = await updateUserKey(item.id, { enabled: !item.enabled });
       setItems(data.items);
-      toast.success(item.enabled ? "用户密钥已禁用" : "用户密钥已启用");
+      toast.success(item.enabled ? t("用户密钥已禁用", "User key disabled") : t("用户密钥已启用", "User key enabled"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "更新用户密钥失败");
+      toast.error(error instanceof Error ? error.message : t("更新用户密钥失败", "Failed to update user key"));
     } finally {
       setItemPending(item.id, false);
     }
@@ -117,9 +120,9 @@ export function UserKeysCard() {
       const data = await deleteUserKey(item.id);
       setItems(data.items);
       setDeletingItem(null);
-      toast.success("用户密钥已删除");
+      toast.success(t("用户密钥已删除", "User key deleted"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "删除用户密钥失败");
+      toast.error(error instanceof Error ? error.message : t("删除用户密钥失败", "Failed to delete user key"));
     } finally {
       setItemPending(item.id, false);
     }
@@ -128,9 +131,9 @@ export function UserKeysCard() {
   const handleCopy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      toast.success("已复制到剪贴板");
+      toast.success(t("已复制到剪贴板", "Copied to clipboard"));
     } catch {
-      toast.error("复制失败，请手动复制");
+      toast.error(t("复制失败，请手动复制", "Copy failed, please copy it manually"));
     }
   };
 
@@ -144,19 +147,19 @@ export function UserKeysCard() {
                 <KeyRound className="size-5 text-stone-600" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">用户密钥管理</h2>
-                <p className="text-sm text-stone-500">为普通用户创建专用密钥；普通用户只能进入画图页，不能查看设置和号池。</p>
+                <h2 className="text-lg font-semibold tracking-tight">{t("用户密钥管理", "User keys")}</h2>
+                <p className="text-sm text-stone-500">{t("为普通用户创建专用密钥；普通用户只能进入画图页，不能查看设置和号池。", "Create dedicated keys for regular users. Regular users can only access the image page and cannot open settings or accounts.")}</p>
               </div>
             </div>
             <Button className="h-9 rounded-xl bg-stone-950 px-4 text-white hover:bg-stone-800" onClick={() => setIsDialogOpen(true)}>
               <Plus className="size-4" />
-              创建用户密钥
+              {t("创建用户密钥", "Create user key")}
             </Button>
           </div>
 
           {revealedKey ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
-              <div className="font-medium">新密钥仅展示一次，请立即保存：</div>
+              <div className="font-medium">{t("新密钥仅展示一次，请立即保存：", "This new key is shown only once. Save it now:")}</div>
               <div className="mt-3 flex flex-col gap-3 rounded-lg border border-emerald-200 bg-white/80 p-3 md:flex-row md:items-center md:justify-between">
                 <code className="break-all font-mono text-[13px]">{revealedKey}</code>
                 <Button
@@ -166,7 +169,7 @@ export function UserKeysCard() {
                   onClick={() => void handleCopy(revealedKey)}
                 >
                   <Copy className="size-4" />
-                  复制
+                  {t("复制", "Copy")}
                 </Button>
               </div>
             </div>
@@ -178,7 +181,7 @@ export function UserKeysCard() {
             </div>
           ) : items.length === 0 ? (
             <div className="rounded-xl bg-stone-50 px-6 py-10 text-center text-sm text-stone-500">
-              暂无普通用户密钥。点击右上角按钮后即可创建并分发给其他人。
+              {t("暂无普通用户密钥。点击右上角按钮后即可创建并分发给其他人。", "No user keys yet. Click the button in the top-right corner to create one and share it.")}
             </div>
           ) : (
             <div className="space-y-3">
@@ -190,12 +193,12 @@ export function UserKeysCard() {
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="truncate text-sm font-medium text-stone-800">{item.name}</div>
                         <Badge variant={item.enabled ? "success" : "secondary"} className="rounded-md">
-                          {item.enabled ? "已启用" : "已禁用"}
+                          {item.enabled ? t("已启用", "Enabled") : t("已禁用", "Disabled")}
                         </Badge>
                       </div>
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
-                        <span>创建时间 {formatDateTime(item.created_at)}</span>
-                        <span>最近使用 {formatDateTime(item.last_used_at)}</span>
+                        <span>{t("创建时间", "Created")} {formatDateTime(item.created_at, isEnglish)}</span>
+                        <span>{t("最近使用", "Last used")} {formatDateTime(item.last_used_at, isEnglish)}</span>
                       </div>
                     </div>
 
@@ -214,7 +217,7 @@ export function UserKeysCard() {
                         ) : (
                           <CheckCircle2 className="size-4" />
                         )}
-                        {item.enabled ? "禁用" : "启用"}
+                        {item.enabled ? t("禁用", "Disable") : t("启用", "Enable")}
                       </Button>
                       <Button
                         type="button"
@@ -224,7 +227,7 @@ export function UserKeysCard() {
                         disabled={isPending}
                       >
                         {isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                        删除
+                        {t("删除", "Delete")}
                       </Button>
                     </div>
                   </div>
@@ -238,17 +241,17 @@ export function UserKeysCard() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="rounded-2xl p-6">
           <DialogHeader className="gap-2">
-            <DialogTitle>创建用户密钥</DialogTitle>
+            <DialogTitle>{t("创建用户密钥", "Create user key")}</DialogTitle>
             <DialogDescription className="text-sm leading-6">
-              可选填写一个备注名称，方便区分不同使用者；创建后会生成一条只能查看一次的原始密钥。
+              {t("可选填写一个备注名称，方便区分不同使用者；创建后会生成一条只能查看一次的原始密钥。", "You can optionally add a note to distinguish different users. After creation, the raw key will only be shown once.")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
-            <label className="text-sm font-medium text-stone-700">名称（可选）</label>
+            <label className="text-sm font-medium text-stone-700">{t("名称（可选）", "Name (optional)")}</label>
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="例如：设计同学 A、运营临时账号"
+              placeholder={t("例如：设计同学 A、运营临时账号", "For example: Designer A, temp ops account")}
               className="h-11 rounded-xl border-stone-200 bg-white"
             />
           </div>
@@ -260,7 +263,7 @@ export function UserKeysCard() {
               onClick={() => setIsDialogOpen(false)}
               disabled={isCreating}
             >
-              取消
+              {t("取消", "Cancel")}
             </Button>
             <Button
               type="button"
@@ -269,7 +272,7 @@ export function UserKeysCard() {
               disabled={isCreating}
             >
               {isCreating ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              创建
+              {t("创建", "Create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -278,9 +281,9 @@ export function UserKeysCard() {
       <Dialog open={Boolean(deletingItem)} onOpenChange={(open) => (!open ? setDeletingItem(null) : null)}>
         <DialogContent className="rounded-2xl p-6">
           <DialogHeader className="gap-2">
-            <DialogTitle>删除用户密钥</DialogTitle>
+            <DialogTitle>{t("删除用户密钥", "Delete user key")}</DialogTitle>
             <DialogDescription className="text-sm leading-6">
-              确认删除用户密钥「{deletingItem?.name}」吗？删除后该密钥将无法继续调用接口。
+              {t(`确认删除用户密钥「${deletingItem?.name}」吗？删除后该密钥将无法继续调用接口。`, `Delete the user key "${deletingItem?.name}"? It will no longer be able to call the API.`)}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -291,7 +294,7 @@ export function UserKeysCard() {
               onClick={() => setDeletingItem(null)}
               disabled={deletingItem ? pendingIds.has(deletingItem.id) : false}
             >
-              取消
+              {t("取消", "Cancel")}
             </Button>
             <Button
               type="button"
@@ -300,7 +303,7 @@ export function UserKeysCard() {
               disabled={deletingItem ? pendingIds.has(deletingItem.id) : false}
             >
               {deletingItem && pendingIds.has(deletingItem.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-              删除
+              {t("删除", "Delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
