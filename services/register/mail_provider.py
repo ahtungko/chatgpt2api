@@ -128,6 +128,34 @@ def _message_matches_email(data: dict[str, Any], email: str) -> bool:
     return not target or not candidates or any(target in str(item).strip().lower() for item in candidates if str(item).strip())
 
 
+def _message_received_at(data: dict[str, Any], *keys: str) -> datetime | None:
+    for key in keys:
+        received_at = _parse_received_at(data.get(key))
+        if received_at:
+            return received_at
+    return None
+
+
+def _message_identifier(data: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = str(data.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _latest_message(items: list[dict[str, Any]], *, time_keys: tuple[str, ...], id_keys: tuple[str, ...]) -> dict[str, Any] | None:
+    if not items:
+        return None
+    return max(
+        items,
+        key=lambda value: (
+            (_message_received_at(value, *time_keys) or datetime.fromtimestamp(0, tz=timezone.utc)).timestamp(),
+            _message_identifier(value, *id_keys),
+        ),
+    )
+
+
 def _extract_code(message: dict[str, Any]) -> str | None:
     content = f"{message.get('subject', '')}\n{message.get('text_content', '')}\n{message.get('html_content', '')}".strip()
     if not content:
@@ -164,7 +192,38 @@ class BaseMailProvider:
         return None
 
     def wait_for_code(self, mailbox: dict[str, Any]) -> str | None:
-        return self.wait_for(mailbox, _extract_code)
+        state = mailbox.get("_wait_for_code_state")
+        if not isinstance(state, dict):
+            state = {}
+            mailbox["_wait_for_code_state"] = state
+        consumed_codes = state.get("consumed_codes")
+        if not isinstance(consumed_codes, list):
+            consumed_codes = []
+            state["consumed_codes"] = consumed_codes
+        consumed_message_ids = state.get("consumed_message_ids")
+        if not isinstance(consumed_message_ids, list):
+            consumed_message_ids = []
+            state["consumed_message_ids"] = consumed_message_ids
+        consumed_received_at = _parse_received_at(state.get("consumed_received_at"))
+
+        def _consume(message: dict[str, Any]) -> str | None:
+            code = _extract_code(message)
+            if not code:
+                return None
+            message_id = _message_identifier(message, "message_id")
+            if message_id and message_id in consumed_message_ids:
+                return None
+            received_at = _message_received_at(message, "received_at")
+            if code in consumed_codes and (not received_at or not consumed_received_at or received_at <= consumed_received_at):
+                return None
+            consumed_codes.append(code)
+            if message_id and message_id not in consumed_message_ids:
+                consumed_message_ids.append(message_id)
+            if received_at and (not consumed_received_at or received_at > consumed_received_at):
+                state["consumed_received_at"] = received_at.astimezone(timezone.utc).isoformat()
+            return code
+
+        return self.wait_for(mailbox, _consume)
 
     def close(self) -> None:
         pass
@@ -200,12 +259,14 @@ class CloudflareTempMailProvider(BaseMailProvider):
         messages = [item for item in raw if isinstance(item, dict) and _message_matches_email(item, str(mailbox.get("address") or ""))]
         if not messages:
             return None
-        item = messages[0]
+        item = _latest_message(messages, time_keys=("createdAt", "created_at", "receivedAt", "date", "timestamp"), id_keys=("id", "_id"))
+        if not item:
+            return None
         text_content, html_content = _extract_content(item)
         sender = item.get("from") or item.get("sender") or ""
         if isinstance(sender, dict):
             sender = sender.get("address") or sender.get("email") or sender.get("name") or ""
-        return {"provider": self.name, "mailbox": mailbox["address"], "message_id": str(item.get("id") or item.get("_id") or ""), "subject": str(item.get("subject") or ""), "sender": str(sender), "text_content": text_content, "html_content": html_content, "received_at": _parse_received_at(item.get("createdAt") or item.get("created_at") or item.get("receivedAt") or item.get("date") or item.get("timestamp")), "raw": item}
+        return {"provider": self.name, "mailbox": mailbox["address"], "message_id": str(item.get("id") or item.get("_id") or ""), "subject": str(item.get("subject") or ""), "sender": str(sender), "text_content": text_content, "html_content": html_content, "received_at": _message_received_at(item, "createdAt", "created_at", "receivedAt", "date", "timestamp"), "raw": item}
 
     def close(self) -> None:
         self.session.close()
@@ -305,9 +366,12 @@ class DuckMailProvider(BaseMailProvider):
     def fetch_latest_message(self, mailbox: dict[str, Any]) -> dict[str, Any] | None:
         data = self._request("GET", "/messages", token=str(mailbox.get("token") or ""), params={"page": 1})
         items = self._items(data)
-        if not items:
+        messages = [item for item in items if isinstance(item, dict)] if isinstance(items, list) else []
+        if not messages:
             return None
-        item = items[0]
+        item = _latest_message(messages, time_keys=("createdAt", "created_at", "receivedAt", "date"), id_keys=("id", "@id"))
+        if not item:
+            return None
         message_id = str(item.get("id") or item.get("@id") or "").replace("/messages/", "")
         if message_id:
             item = self._request("GET", f"/messages/{message_id}", token=str(mailbox.get("token") or ""))
@@ -317,7 +381,7 @@ class DuckMailProvider(BaseMailProvider):
         html_content = item.get("html") or ""
         if isinstance(html_content, list):
             html_content = "".join(str(value) for value in html_content)
-        return {"provider": self.name, "mailbox": mailbox["address"], "message_id": message_id, "subject": str(item.get("subject") or ""), "sender": str(sender), "text_content": str(item.get("text") or item.get("text_content") or ""), "html_content": str(html_content), "received_at": _parse_received_at(item.get("createdAt") or item.get("created_at") or item.get("receivedAt") or item.get("date")), "raw": item}
+        return {"provider": self.name, "mailbox": mailbox["address"], "message_id": message_id, "subject": str(item.get("subject") or ""), "sender": str(sender), "text_content": str(item.get("text") or item.get("text_content") or ""), "html_content": str(html_content), "received_at": _message_received_at(item, "createdAt", "created_at", "receivedAt", "date"), "raw": item}
 
     def close(self) -> None:
         self.session.close()
