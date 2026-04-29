@@ -81,7 +81,9 @@ export type ImagePageMessages = {
   historyButton: (count: number) => string;
   toasts: {
     readReferenceImageFailed: string;
+    readResultImageFailed: string;
     interruptedImagesMarkedFailed: string;
+    missingRecoverableTaskId: string;
     someImagesFailed: (count: number) => string;
     readHistoryFailed: string;
     deleteConversationFailed: string;
@@ -190,7 +192,9 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
     historyButton: (count) => `历史记录 (${count})`,
     toasts: {
       readReferenceImageFailed: "读取参考图失败",
+      readResultImageFailed: "读取结果图失败",
       interruptedImagesMarkedFailed: "页面刷新或任务中断，未完成的图片已标记为失败",
+      missingRecoverableTaskId: "页面刷新或任务中断，未找到可恢复的任务 ID",
       someImagesFailed: (count) => `其中 ${count} 张未成功生成`,
       readHistoryFailed: "读取会话记录失败",
       deleteConversationFailed: "删除会话失败",
@@ -297,7 +301,9 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
     historyButton: (count) => `History (${count})`,
     toasts: {
       readReferenceImageFailed: "Failed to read the reference image",
+      readResultImageFailed: "Failed to read the generated image",
       interruptedImagesMarkedFailed: "The page refreshed or the task was interrupted, so unfinished images were marked as failed",
+      missingRecoverableTaskId: "The page refreshed or the task was interrupted, and no recoverable task ID was found",
       someImagesFailed: (count) => `${count} image${count === 1 ? "" : "s"} failed to generate`,
       readHistoryFailed: "Failed to read conversation history",
       deleteConversationFailed: "Failed to delete the conversation",
