@@ -98,8 +98,12 @@ export function ImageResults({
         return (
           <div key={turn.id} className="flex flex-col gap-3 sm:gap-4">
             <div className="flex justify-end">
-              <div className="max-w-[90%] px-1 py-1 text-[14px] leading-6 text-stone-900 sm:max-w-[82%] sm:text-[15px] sm:leading-7">
-                <div className="mb-1.5 flex flex-wrap justify-end gap-2 text-[11px] text-stone-400 sm:mb-2">
+              <div className="relative max-w-[92%] rounded-[24px] border border-stone-200/85 bg-white px-4 py-3 shadow-[0_12px_30px_-24px_rgba(15,23,42,0.28)] sm:max-w-[82%] sm:px-5 sm:py-4">
+                <span
+                  aria-hidden
+                  className="absolute -right-[7px] top-5 size-3 rotate-45 border-r border-t border-stone-200/85 bg-white"
+                />
+                <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[11px] text-stone-400 sm:mb-2">
                   <span>{messages.results.turn(turnIndex + 1)}</span>
                   <span>
                     {turn.mode === "edit" ? messages.results.editMode : messages.results.generateMode}
@@ -107,7 +111,9 @@ export function ImageResults({
                   <span>{getTurnStatusLabel(turn.status, messages)}</span>
                   <span>{formatConversationTime(turn.createdAt)}</span>
                 </div>
-                <div className="text-right">{turn.prompt}</div>
+                <div className="whitespace-pre-wrap text-left text-[14px] leading-6 text-stone-900 sm:text-[15px] sm:leading-7">
+                  {turn.prompt}
+                </div>
               </div>
             </div>
 
