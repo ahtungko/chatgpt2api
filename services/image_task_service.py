@@ -10,7 +10,7 @@ from typing import Any
 
 from services.auth_service import auth_service
 from services.config import DATA_DIR, config
-from services.log_service import LoggedCall
+from services.log_service import LoggedCall, active_call_service
 from services.protocol import openai_v1_image_edit, openai_v1_image_generations
 
 TASK_STATUS_QUEUED = "queued"
@@ -205,15 +205,16 @@ class ImageTaskService:
                 owner_id = _clean(item.get("owner_id"))
                 item["owner_name"] = owner_names.get(owner_id) or _clean(item.get("owner_name")) or owner_id or "unknown"
                 tasks.append(_public_task(item, include_owner=True))
-            tasks.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
-            return {
-                "items": tasks,
-                "stats": {
-                    "total": len(tasks),
-                    "queued": sum(1 for task in tasks if task.get("status") == TASK_STATUS_QUEUED),
-                    "running": sum(1 for task in tasks if task.get("status") == TASK_STATUS_RUNNING),
-                },
-            }
+        tasks.extend(active_call_service.list_running())
+        tasks.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+        return {
+            "items": tasks,
+            "stats": {
+                "total": len(tasks),
+                "queued": sum(1 for task in tasks if task.get("status") == TASK_STATUS_QUEUED),
+                "running": sum(1 for task in tasks if task.get("status") == TASK_STATUS_RUNNING),
+            },
+        }
 
     def _submit(
         self,

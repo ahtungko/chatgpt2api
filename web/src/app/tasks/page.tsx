@@ -53,7 +53,22 @@ function getStatusLabel(task: AdminImageTask, t: (zh: string, en: string) => str
 }
 
 function getModeLabel(task: AdminImageTask, t: (zh: string, en: string) => string) {
-  return task.mode === "edit" ? t("图生图", "Edit") : t("文生图", "Generate");
+  if (task.mode === "generate") {
+    return t("文生图", "Generate");
+  }
+  if (task.mode === "edit") {
+    return t("图生图", "Edit");
+  }
+  if (task.mode === "responses") {
+    return "Responses";
+  }
+  if (task.mode === "chat") {
+    return t("文本", "Chat");
+  }
+  if (task.mode === "messages") {
+    return "Messages";
+  }
+  return task.mode || task.endpoint || "-";
 }
 
 function getOwnerLabel(task: AdminImageTask, t: (zh: string, en: string) => string) {
@@ -110,7 +125,7 @@ function RunningTasksContent() {
           <div className="text-xs font-semibold tracking-[0.18em] text-stone-500 uppercase">Tasks</div>
           <h1 className="text-2xl font-semibold tracking-tight">{t("当前任务", "Current tasks")}</h1>
           <p className="text-sm text-stone-500">
-            {t("查看所有用户当前排队或运行中的图片任务。", "View all queued or running image tasks across users.")}
+            {t("查看所有用户当前排队或运行中的任务和直接 API 调用。", "View queued/running tasks and direct API calls across users.")}
           </p>
         </div>
         <Button onClick={() => void loadTasks()} disabled={isLoading} className="h-10 rounded-xl bg-stone-950 px-4 text-white hover:bg-stone-800">

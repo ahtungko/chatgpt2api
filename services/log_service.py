@@ -6,6 +6,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from threading import RLock
 from typing import Any
 
 from fastapi import HTTPException
@@ -58,6 +59,149 @@ class LogService:
 
 
 log_service = LogService(DATA_DIR / "logs.jsonl")
+
+
+PROMPT_PREVIEW_LIMIT = 500
+
+
+def _now_text() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _clean(value: object, default: str = "") -> str:
+    return str(value or default).strip()
+
+
+def _prompt_preview(value: object) -> str:
+    text = _clean(value)
+    if len(text) <= PROMPT_PREVIEW_LIMIT:
+        return text
+    return f"{text[:PROMPT_PREVIEW_LIMIT]}..."
+
+
+def _text_from_content(value: object) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("input_text") or item.get("content")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(parts)
+    if isinstance(value, dict):
+        text = value.get("text") or value.get("input_text") or value.get("content")
+        return _text_from_content(text)
+    return ""
+
+
+def _prompt_from_payload(payload: dict[str, Any]) -> str:
+    prompt = _clean(payload.get("prompt"))
+    if prompt:
+        return _prompt_preview(prompt)
+
+    input_value = payload.get("input")
+    if isinstance(input_value, str):
+        return _prompt_preview(input_value)
+    if isinstance(input_value, list):
+        parts: list[str] = []
+        for item in input_value:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = _text_from_content(item.get("content") or item.get("text"))
+                if text:
+                    parts.append(text)
+        if parts:
+            return _prompt_preview("\n".join(parts))
+
+    messages = payload.get("messages")
+    if isinstance(messages, list):
+        parts = []
+        for item in messages:
+            if isinstance(item, dict):
+                text = _text_from_content(item.get("content"))
+                if text:
+                    parts.append(text)
+        if parts:
+            return _prompt_preview("\n".join(parts[-3:]))
+    return ""
+
+
+def _size_from_payload(payload: dict[str, Any]) -> str:
+    size = _clean(payload.get("size"))
+    if size:
+        return size
+    tools = payload.get("tools")
+    if isinstance(tools, list):
+        for tool in tools:
+            if isinstance(tool, dict):
+                size = _clean(tool.get("size"))
+                if size:
+                    return size
+    return ""
+
+
+def _mode_from_endpoint(endpoint: str) -> str:
+    if endpoint.endswith("/images/generations"):
+        return "generate"
+    if endpoint.endswith("/images/edits"):
+        return "edit"
+    if endpoint.endswith("/responses"):
+        return "responses"
+    if endpoint.endswith("/chat/completions"):
+        return "chat"
+    if endpoint.endswith("/messages"):
+        return "messages"
+    return endpoint.rsplit("/", 1)[-1] or "api"
+
+
+class ActiveCallService:
+    def __init__(self):
+        self._lock = RLock()
+        self._counter = itertools.count(1)
+        self._items: dict[str, dict[str, Any]] = {}
+
+    def start(self, call: "LoggedCall", args: tuple[object, ...]) -> str:
+        payload = next((arg for arg in args if isinstance(arg, dict)), {})
+        item_id = f"direct-{int(call.started * 1000)}-{next(self._counter)}"
+        now = _now_text()
+        item = {
+            "id": item_id,
+            "status": "running",
+            "mode": _mode_from_endpoint(call.endpoint),
+            "model": call.model,
+            "size": _size_from_payload(payload),
+            "created_at": datetime.fromtimestamp(call.started).strftime("%Y-%m-%d %H:%M:%S"),
+            "updated_at": now,
+            "owner_id": call.identity.get("id"),
+            "owner_role": call.identity.get("role"),
+            "owner_name": call.identity.get("name"),
+            "prompt_preview": _prompt_from_payload(payload),
+            "endpoint": call.endpoint,
+            "source": "direct",
+        }
+        with self._lock:
+            self._items[item_id] = item
+        return item_id
+
+    def finish(self, item_id: str | None) -> None:
+        if not item_id:
+            return
+        with self._lock:
+            self._items.pop(item_id, None)
+
+    def list_running(self) -> list[dict[str, Any]]:
+        with self._lock:
+            items = [dict(item) for item in self._items.values()]
+        items.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+        return items
+
+
+active_call_service = ActiveCallService()
 
 
 def _collect_urls(value: object) -> list[str]:
@@ -123,40 +267,51 @@ class LoggedCall:
     async def run(self, handler, *args, sse: str = "openai"):
         from services.protocol.conversation import ImageGenerationError
 
+        active_call_id = active_call_service.start(self, args)
+        finish_on_return = True
         try:
-            result = await run_in_threadpool(handler, *args)
-        except ImageGenerationError as exc:
-            self.log("调用失败", status="failed", error=str(exc))
-            return _image_error_response(exc)
-        except HTTPException as exc:
-            self.log("调用失败", status="failed", error=str(exc.detail))
-            raise
-        except Exception as exc:
-            self.log("调用失败", status="failed", error=str(exc))
-            raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
+            try:
+                result = await run_in_threadpool(handler, *args)
+            except ImageGenerationError as exc:
+                self.log('调用失败', status="failed", error=str(exc))
+                return _image_error_response(exc)
+            except HTTPException as exc:
+                self.log('调用失败', status="failed", error=str(exc.detail))
+                raise
+            except Exception as exc:
+                self.log('调用失败', status="failed", error=str(exc))
+                raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
-        if isinstance(result, dict):
-            self.log("调用完成", result)
-            return result
+            if isinstance(result, dict):
+                self.log('调用完成', result)
+                return result
 
-        sender = anthropic_sse_stream if sse == "anthropic" else sse_json_stream
-        try:
-            has_first, first = await run_in_threadpool(_next_item, result)
-        except ImageGenerationError as exc:
-            self.log("调用失败", status="failed", error=str(exc))
-            return _image_error_response(exc)
-        except HTTPException as exc:
-            self.log("调用失败", status="failed", error=str(exc.detail))
-            raise
-        except Exception as exc:
-            self.log("调用失败", status="failed", error=str(exc))
-            raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
-        if not has_first:
-            self.log("流式调用结束")
-            return StreamingResponse(sender(()), media_type="text/event-stream")
-        return StreamingResponse(sender(self.stream(itertools.chain([first], result))), media_type="text/event-stream")
+            sender = anthropic_sse_stream if sse == "anthropic" else sse_json_stream
+            try:
+                has_first, first = await run_in_threadpool(_next_item, result)
+            except ImageGenerationError as exc:
+                self.log('调用失败', status="failed", error=str(exc))
+                return _image_error_response(exc)
+            except HTTPException as exc:
+                self.log('调用失败', status="failed", error=str(exc.detail))
+                raise
+            except Exception as exc:
+                self.log('调用失败', status="failed", error=str(exc))
+                raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
+            if not has_first:
+                self.log('流式调用结束')
+                finish_on_return = False
+                return StreamingResponse(sender(self.stream((), active_call_id=active_call_id)), media_type="text/event-stream")
+            finish_on_return = False
+            return StreamingResponse(
+                sender(self.stream(itertools.chain([first], result), active_call_id=active_call_id)),
+                media_type="text/event-stream",
+            )
+        finally:
+            if finish_on_return:
+                active_call_service.finish(active_call_id)
 
-    def stream(self, items):
+    def stream(self, items, active_call_id: str | None = None):
         urls: list[str] = []
         failed = False
         try:
@@ -165,11 +320,12 @@ class LoggedCall:
                 yield item
         except Exception as exc:
             failed = True
-            self.log("流式调用失败", status="failed", error=str(exc), urls=urls)
+            self.log('流式调用失败', status="failed", error=str(exc), urls=urls)
             raise
         finally:
             if not failed:
-                self.log("流式调用结束", urls=urls)
+                self.log('流式调用结束', urls=urls)
+            active_call_service.finish(active_call_id)
 
     def log(self, suffix: str, result: object = None, status: str = "success", error: str = "",
             urls: list[str] | None = None) -> None:

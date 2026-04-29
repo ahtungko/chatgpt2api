@@ -85,12 +85,14 @@ export type ImageResponse = {
 export type ImageTask = {
   id: string;
   status: "queued" | "running" | "success" | "error";
-  mode: "generate" | "edit";
-  model?: ImageModel;
+  mode: "generate" | "edit" | "responses" | "chat" | "messages" | string;
+  model?: ImageModel | string;
   size?: string;
   created_at: string;
   updated_at: string;
   prompt_preview?: string;
+  endpoint?: string;
+  source?: "async" | "direct" | string;
   data?: Array<{ b64_json?: string; url?: string; revised_prompt?: string }>;
   error?: string;
 };
