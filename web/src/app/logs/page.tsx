@@ -21,6 +21,8 @@ const LogType = {
   Account: "account",
 } as const;
 
+type LogTypeValue = (typeof LogType)[keyof typeof LogType];
+
 function getDetailText(item: SystemLog, key: string) {
   const value = item.detail?.[key];
   return typeof value === "string" || typeof value === "number" ? String(value) : "-";
@@ -46,7 +48,7 @@ function getStatus(item: SystemLog, t: (zh: string, en: string) => string) {
 function LogsContent() {
   const t = useTranslate();
   const [items, setItems] = useState<SystemLog[]>([]);
-  const [type, setType] = useState(LogType.Call);
+  const [type, setType] = useState<LogTypeValue>(LogType.Call);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [detailLog, setDetailLog] = useState<SystemLog | null>(null);
@@ -58,7 +60,7 @@ function LogsContent() {
   const detailUrls = getUrls(detailLog);
   const detailImages = detailUrls.map((url, index) => ({ id: `${index}`, src: url }));
   const isCallLog = type === LogType.Call;
-  const typeLabels: Record<string, string> = {
+  const typeLabels: Record<LogTypeValue, string> = {
     [LogType.Call]: t("调用日志", "Call logs"),
     [LogType.Account]: t("账号管理日志", "Account logs"),
   };
@@ -108,7 +110,7 @@ function LogsContent() {
           <h1 className="text-2xl font-semibold tracking-tight">{t("日志管理", "Logs")}</h1>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Select value={type} onValueChange={(value) => setType(value as typeof LogType.Call | typeof LogType.Account)}>
+          <Select value={type} onValueChange={(value) => setType(value as LogTypeValue)}>
             <SelectTrigger className="h-10 w-[150px] rounded-xl border-stone-200 bg-white"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value={LogType.Call}>{t("调用日志", "Call logs")}</SelectItem>
@@ -152,7 +154,11 @@ function LogsContent() {
                 {currentRows.map((item, index) => (
                   <TableRow key={`${item.time}-${index}`} className="text-stone-600">
                     <TableCell className="whitespace-nowrap">{item.time}</TableCell>
-                    <TableCell><Badge variant="secondary" className="rounded-md">{typeLabels[item.type] || item.type}</Badge></TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="rounded-md">
+                        {item.type in typeLabels ? typeLabels[item.type as LogTypeValue] : item.type}
+                      </Badge>
+                    </TableCell>
                     {isCallLog ? <TableCell>{getDetailText(item, "key_name")}</TableCell> : null}
                     {isCallLog ? <TableCell>{formatDuration(item)}</TableCell> : null}
                     {isCallLog ? (

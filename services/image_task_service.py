@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from services.config import DATA_DIR, config
+from services.log_service import LoggedCall
 from services.protocol import openai_v1_image_edit, openai_v1_image_generations
 
 TASK_STATUS_QUEUED = "queued"
@@ -107,7 +108,8 @@ class ImageTaskService:
             "response_format": "url",
             "base_url": base_url,
         }
-        return self._submit(identity, client_task_id=client_task_id, mode="generate", payload=payload)
+        call = LoggedCall(identity, "/api/image-tasks/generations", model, "文生图")
+        return self._submit(identity, client_task_id=client_task_id, mode="generate", payload=payload, call=call)
 
     def submit_edit(
         self,
@@ -129,7 +131,8 @@ class ImageTaskService:
             "response_format": "url",
             "base_url": base_url,
         }
-        return self._submit(identity, client_task_id=client_task_id, mode="edit", payload=payload)
+        call = LoggedCall(identity, "/api/image-tasks/edits", model, "图生图")
+        return self._submit(identity, client_task_id=client_task_id, mode="edit", payload=payload, call=call)
 
     def list_tasks(self, identity: dict[str, object], task_ids: list[str]) -> dict[str, Any]:
         owner = _owner_id(identity)
@@ -162,6 +165,7 @@ class ImageTaskService:
         client_task_id: str,
         mode: str,
         payload: dict[str, Any],
+        call: LoggedCall | None = None,
     ) -> dict[str, Any]:
         task_id = _clean(client_task_id)
         if not task_id:
@@ -194,14 +198,14 @@ class ImageTaskService:
         if should_start:
             thread = threading.Thread(
                 target=self._run_task,
-                args=(key, mode, payload),
+                args=(key, mode, payload, call),
                 name=f"image-task-{task_id[:16]}",
                 daemon=True,
             )
             thread.start()
         return _public_task(task)
 
-    def _run_task(self, key: str, mode: str, payload: dict[str, Any]) -> None:
+    def _run_task(self, key: str, mode: str, payload: dict[str, Any], call: LoggedCall | None = None) -> None:
         self._update_task(key, status=TASK_STATUS_RUNNING, error="")
         try:
             handler = self.edit_handler if mode == "edit" else self.generation_handler
@@ -213,8 +217,12 @@ class ImageTaskService:
                 message = _clean(result.get("message")) or "image task returned no image data"
                 raise RuntimeError(message)
             self._update_task(key, status=TASK_STATUS_SUCCESS, data=data, error="")
+            if call is not None:
+                call.log("调用完成", result)
         except Exception as exc:
             self._update_task(key, status=TASK_STATUS_ERROR, error=str(exc) or "image task failed", data=[])
+            if call is not None:
+                call.log("调用失败", status="failed", error=str(exc) or "image task failed")
 
     def _update_task(self, key: str, **updates: Any) -> None:
         with self._lock:
