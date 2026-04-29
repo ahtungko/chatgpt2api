@@ -59,6 +59,11 @@ const imageConversationStorage = localforage.createInstance({
 const IMAGE_CONVERSATIONS_KEY = "items";
 let imageConversationWriteQueue: Promise<void> = Promise.resolve();
 
+function scopedConversationStorageKey(scope = "") {
+  const normalizedScope = String(scope || "").trim();
+  return normalizedScope ? `${IMAGE_CONVERSATIONS_KEY}:${normalizedScope}` : IMAGE_CONVERSATIONS_KEY;
+}
+
 function normalizeStoredImage(image: StoredImage): StoredImage {
   const normalized = {
     ...image,
@@ -201,36 +206,36 @@ function queueImageConversationWrite<T>(operation: () => Promise<T>): Promise<T>
   return result;
 }
 
-async function readStoredImageConversations(): Promise<ImageConversation[]> {
+async function readStoredImageConversations(scope = ""): Promise<ImageConversation[]> {
   const items =
     (await imageConversationStorage.getItem<Array<ImageConversation & Record<string, unknown>>>(
-      IMAGE_CONVERSATIONS_KEY,
+      scopedConversationStorageKey(scope),
     )) || [];
   return items.map(normalizeConversation);
 }
 
-export async function listImageConversations(): Promise<ImageConversation[]> {
-  return sortImageConversations(await readStoredImageConversations());
+export async function listImageConversations(scope = ""): Promise<ImageConversation[]> {
+  return sortImageConversations(await readStoredImageConversations(scope));
 }
 
-export async function saveImageConversations(conversations: ImageConversation[]): Promise<void> {
+export async function saveImageConversations(conversations: ImageConversation[], scope = ""): Promise<void> {
   await queueImageConversationWrite(async () => {
-    const items = await readStoredImageConversations();
+    const items = await readStoredImageConversations(scope);
     const conversationMap = new Map(items.map((item) => [item.id, item]));
     for (const conversation of conversations.map(normalizeConversation)) {
       const current = conversationMap.get(conversation.id);
       conversationMap.set(conversation.id, current ? pickLatestConversation(current, conversation) : conversation);
     }
     await imageConversationStorage.setItem(
-      IMAGE_CONVERSATIONS_KEY,
+      scopedConversationStorageKey(scope),
       sortImageConversations([...conversationMap.values()]),
     );
   });
 }
 
-export async function saveImageConversation(conversation: ImageConversation): Promise<void> {
+export async function saveImageConversation(conversation: ImageConversation, scope = ""): Promise<void> {
   await queueImageConversationWrite(async () => {
-    const items = await readStoredImageConversations();
+    const items = await readStoredImageConversations(scope);
     const nextConversation = normalizeConversation(conversation);
     const current = items.find((item) => item.id === nextConversation.id);
     const persistedConversation = current ? pickLatestConversation(current, nextConversation) : nextConversation;
@@ -238,23 +243,23 @@ export async function saveImageConversation(conversation: ImageConversation): Pr
       persistedConversation,
       ...items.filter((item) => item.id !== persistedConversation.id),
     ]);
-    await imageConversationStorage.setItem(IMAGE_CONVERSATIONS_KEY, nextItems);
+    await imageConversationStorage.setItem(scopedConversationStorageKey(scope), nextItems);
   });
 }
 
-export async function deleteImageConversation(id: string): Promise<void> {
+export async function deleteImageConversation(id: string, scope = ""): Promise<void> {
   await queueImageConversationWrite(async () => {
-    const items = await readStoredImageConversations();
+    const items = await readStoredImageConversations(scope);
     await imageConversationStorage.setItem(
-      IMAGE_CONVERSATIONS_KEY,
+      scopedConversationStorageKey(scope),
       items.filter((item) => item.id !== id),
     );
   });
 }
 
-export async function clearImageConversations(): Promise<void> {
+export async function clearImageConversations(scope = ""): Promise<void> {
   await queueImageConversationWrite(async () => {
-    await imageConversationStorage.removeItem(IMAGE_CONVERSATIONS_KEY);
+    await imageConversationStorage.removeItem(scopedConversationStorageKey(scope));
   });
 }
 

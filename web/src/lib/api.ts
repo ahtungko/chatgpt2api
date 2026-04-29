@@ -114,6 +114,10 @@ export type UserKey = {
   enabled: boolean;
   created_at: string | null;
   last_used_at: string | null;
+  generate_remaining: number | null;
+  edit_remaining: number | null;
+  generate_used: number;
+  edit_used: number;
 };
 
 export type RegisterConfig = {
@@ -329,14 +333,25 @@ export async function fetchUserKeys() {
   return httpRequest<{ items: UserKey[] }>("/api/auth/users");
 }
 
-export async function createUserKey(name: string) {
+export async function createUserKey(
+  name: string,
+  quotas: { generate_remaining?: number | null; edit_remaining?: number | null } = {},
+) {
   return httpRequest<{ item: UserKey; key: string; items: UserKey[] }>("/api/auth/users", {
     method: "POST",
-    body: { name },
+    body: { name, ...quotas },
   });
 }
 
-export async function updateUserKey(keyId: string, updates: { enabled?: boolean; name?: string }) {
+export async function updateUserKey(
+  keyId: string,
+  updates: {
+    enabled?: boolean;
+    name?: string;
+    generate_remaining?: number | null;
+    edit_remaining?: number | null;
+  },
+) {
   return httpRequest<{ item: UserKey; items: UserKey[] }>(`/api/auth/users/${keyId}`, {
     method: "POST",
     body: updates,

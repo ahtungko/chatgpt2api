@@ -50,6 +50,10 @@ const ACTIVE_CONVERSATION_STORAGE_KEY = "chatgpt2api:image_active_conversation_i
 const IMAGE_SIZE_STORAGE_KEY = "chatgpt2api:image_last_size";
 const activeConversationQueueIds = new Set<string>();
 
+function scopedActiveConversationStorageKey(scope: string) {
+  return `${ACTIVE_CONVERSATION_STORAGE_KEY}:${scope}`;
+}
+
 function buildConversationTitle(prompt: string) {
   const trimmed = prompt.trim();
   if (trimmed.length <= 12) {
@@ -228,7 +232,7 @@ function deriveTurnStatus(
   return { status: "queued", error: undefined };
 }
 
-async function syncConversationImageTasks(items: ImageConversation[], messages: ImagePageMessages) {
+async function syncConversationImageTasks(items: ImageConversation[], messages: ImagePageMessages, storageScope: string) {
   const taskIds = Array.from(
     new Set(
       items.flatMap((conversation) =>
@@ -289,12 +293,12 @@ async function syncConversationImageTasks(items: ImageConversation[], messages: 
   });
 
   if (changed) {
-    await saveImageConversations(normalized);
+    await saveImageConversations(normalized, storageScope);
   }
   return normalized;
 }
 
-async function recoverConversationHistory(items: ImageConversation[], messages: ImagePageMessages) {
+async function recoverConversationHistory(items: ImageConversation[], messages: ImagePageMessages, storageScope: string) {
   let changed = false;
   const normalized = items.map((conversation) => {
     const turns = conversation.turns.map((turn) => {
@@ -338,14 +342,14 @@ async function recoverConversationHistory(items: ImageConversation[], messages: 
   });
 
   if (changed) {
-    await saveImageConversations(normalized);
+    await saveImageConversations(normalized, storageScope);
   }
 
-  return syncConversationImageTasks(normalized, messages);
+  return syncConversationImageTasks(normalized, messages, storageScope);
 }
 
 
-function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
+function ImagePageContent({ isAdmin, storageScope }: { isAdmin: boolean; storageScope: string }) {
   const didLoadQuotaRef = useRef(false);
   const conversationsRef = useRef<ImageConversation[]>([]);
   const resultsViewportRef = useRef<HTMLDivElement>(null);
@@ -370,6 +374,10 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
 
   const messages = useMemo(() => getImagePageMessages(locale), [locale]);
   const messagesRef = useRef(messages);
+  const activeConversationStorageKey = useMemo(
+    () => scopedActiveConversationStorageKey(storageScope),
+    [storageScope],
+  );
   const parsedCount = useMemo(() => Math.max(1, Math.min(10, Number(imageCount) || 1)), [imageCount]);
   const selectedConversation = useMemo(
     () => conversations.find((item) => item.id === selectedConversationId) ?? null,
@@ -418,8 +426,8 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         const storedSize = typeof window !== "undefined" ? window.localStorage.getItem(IMAGE_SIZE_STORAGE_KEY) : null;
         setImageSize(storedSize || "");
 
-        const items = await listImageConversations();
-        const normalizedItems = await recoverConversationHistory(items, getMessages());
+        const items = await listImageConversations(storageScope);
+        const normalizedItems = await recoverConversationHistory(items, getMessages(), storageScope);
         if (cancelled) {
           return;
         }
@@ -427,7 +435,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
         conversationsRef.current = normalizedItems;
         setConversations(normalizedItems);
         const storedConversationId =
-          typeof window !== "undefined" ? window.localStorage.getItem(ACTIVE_CONVERSATION_STORAGE_KEY) : null;
+          typeof window !== "undefined" ? window.localStorage.getItem(activeConversationStorageKey) : null;
         const nextSelectedConversationId =
           (storedConversationId && normalizedItems.some((conversation) => conversation.id === storedConversationId)
             ? storedConversationId
@@ -447,7 +455,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     return () => {
       cancelled = true;
     };
-  }, [getMessages]);
+  }, [activeConversationStorageKey, getMessages, storageScope]);
 
   const loadQuota = useCallback(async () => {
     const currentMessages = getMessages();
@@ -497,11 +505,11 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     }
 
     if (selectedConversationId) {
-      window.localStorage.setItem(ACTIVE_CONVERSATION_STORAGE_KEY, selectedConversationId);
+      window.localStorage.setItem(activeConversationStorageKey, selectedConversationId);
     } else {
-      window.localStorage.removeItem(ACTIVE_CONVERSATION_STORAGE_KEY);
+      window.localStorage.removeItem(activeConversationStorageKey);
     }
-  }, [selectedConversationId]);
+  }, [activeConversationStorageKey, selectedConversationId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -535,7 +543,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     ]);
     conversationsRef.current = nextConversations;
     setConversations(nextConversations);
-    await saveImageConversation(conversation);
+    await saveImageConversation(conversation, storageScope);
   };
 
   const updateConversation = useCallback(
@@ -553,10 +561,10 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
       conversationsRef.current = nextConversations;
       setConversations(nextConversations);
       if (options.persist !== false) {
-        await saveImageConversation(nextConversation);
+        await saveImageConversation(nextConversation, storageScope);
       }
     },
-    [],
+    [storageScope],
   );
 
   const clearComposerInputs = useCallback(() => {
@@ -589,11 +597,11 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
     }
 
     try {
-      await deleteImageConversation(id);
+      await deleteImageConversation(id, storageScope);
     } catch (error) {
       const message = error instanceof Error ? error.message : getMessages().toasts.deleteConversationFailed;
       toast.error(message);
-      const items = await listImageConversations();
+      const items = await listImageConversations(storageScope);
       conversationsRef.current = items;
       setConversations(items);
     }
@@ -601,7 +609,7 @@ function ImagePageContent({ isAdmin }: { isAdmin: boolean }) {
 
   const handleClearHistory = async () => {
     try {
-      await clearImageConversations();
+      await clearImageConversations(storageScope);
       conversationsRef.current = [];
       setConversations([]);
       setSelectedConversationId(null);
@@ -1130,5 +1138,11 @@ export default function ImagePage() {
     );
   }
 
-  return <ImagePageContent isAdmin={session.role === "admin"} />;
+  return (
+    <ImagePageContent
+      key={session.subjectId || session.key}
+      isAdmin={session.role === "admin"}
+      storageScope={session.subjectId || session.key}
+    />
+  );
 }

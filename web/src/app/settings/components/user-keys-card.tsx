@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Ban, CheckCircle2, Copy, KeyRound, LoaderCircle, Plus, Trash2 } from "lucide-react";
+import { Ban, CheckCircle2, Copy, KeyRound, LoaderCircle, Plus, Settings2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAppLocale, useTranslate } from "@/i18n/locale";
@@ -36,6 +36,26 @@ function formatDateTime(value?: string | null, isEnglish = false) {
   }).format(date);
 }
 
+function quotaValueToInput(value?: number | null) {
+  return value == null ? "" : String(value);
+}
+
+function parseQuotaInput(value: string, errorMessage: string) {
+  const text = value.trim();
+  if (!text) {
+    return null;
+  }
+  const parsed = Number(text);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(errorMessage);
+  }
+  return parsed;
+}
+
+function formatQuotaValue(value: number | null | undefined, t: (zh: string, en: string) => string) {
+  return value == null ? t("无限", "Unlimited") : String(value);
+}
+
 export function UserKeysCard() {
   const t = useTranslate();
   const { isEnglish } = useAppLocale();
@@ -43,11 +63,18 @@ export function UserKeysCard() {
   const [items, setItems] = useState<UserKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [name, setName] = useState("");
+  const [createName, setCreateName] = useState("");
+  const [createGenerateQuota, setCreateGenerateQuota] = useState("");
+  const [createEditQuota, setCreateEditQuota] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const [revealedKey, setRevealedKey] = useState("");
   const [deletingItem, setDeletingItem] = useState<UserKey | null>(null);
+  const [editingItem, setEditingItem] = useState<UserKey | null>(null);
+  const [editingName, setEditingName] = useState("");
+  const [editingGenerateQuota, setEditingGenerateQuota] = useState("");
+  const [editingEditQuota, setEditingEditQuota] = useState("");
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
     setIsLoading(true);
@@ -69,13 +96,22 @@ export function UserKeysCard() {
     void load();
   }, [load]);
 
+  const resetCreateForm = () => {
+    setCreateName("");
+    setCreateGenerateQuota("");
+    setCreateEditQuota("");
+  };
+
   const handleCreate = async () => {
     setIsCreating(true);
     try {
-      const data = await createUserKey(name.trim());
+      const data = await createUserKey(createName.trim(), {
+        generate_remaining: parseQuotaInput(createGenerateQuota, t("文生图额度必须是大于等于 0 的整数", "Generate quota must be an integer greater than or equal to 0")),
+        edit_remaining: parseQuotaInput(createEditQuota, t("图生图额度必须是大于等于 0 的整数", "Edit quota must be an integer greater than or equal to 0")),
+      });
       setItems(data.items);
       setRevealedKey(data.key);
-      setName("");
+      resetCreateForm();
       setIsDialogOpen(false);
       toast.success(t("用户密钥已创建", "User key created"));
     } catch (error) {
@@ -107,6 +143,34 @@ export function UserKeysCard() {
       toast.error(error instanceof Error ? error.message : t("更新用户密钥失败", "Failed to update user key"));
     } finally {
       setItemPending(item.id, false);
+    }
+  };
+
+  const openEditDialog = (item: UserKey) => {
+    setEditingItem(item);
+    setEditingName(item.name);
+    setEditingGenerateQuota(quotaValueToInput(item.generate_remaining));
+    setEditingEditQuota(quotaValueToInput(item.edit_remaining));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingItem) {
+      return;
+    }
+    setIsSavingEdit(true);
+    try {
+      const data = await updateUserKey(editingItem.id, {
+        name: editingName.trim(),
+        generate_remaining: parseQuotaInput(editingGenerateQuota, t("文生图额度必须是大于等于 0 的整数", "Generate quota must be an integer greater than or equal to 0")),
+        edit_remaining: parseQuotaInput(editingEditQuota, t("图生图额度必须是大于等于 0 的整数", "Edit quota must be an integer greater than or equal to 0")),
+      });
+      setItems(data.items);
+      setEditingItem(null);
+      toast.success(t("用户密钥额度已更新", "User key quota updated"));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t("更新用户密钥失败", "Failed to update user key"));
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -188,47 +252,77 @@ export function UserKeysCard() {
               {items.map((item) => {
                 const isPending = pendingIds.has(item.id);
                 return (
-                  <div key={item.id} className="flex flex-col gap-3 rounded-xl border border-stone-200 bg-white px-4 py-4 md:flex-row md:items-center md:justify-between">
-                    <div className="min-w-0 space-y-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="truncate text-sm font-medium text-stone-800">{item.name}</div>
-                        <Badge variant={item.enabled ? "success" : "secondary"} className="rounded-md">
-                          {item.enabled ? t("已启用", "Enabled") : t("已禁用", "Disabled")}
-                        </Badge>
+                  <div key={item.id} className="flex flex-col gap-4 rounded-xl border border-stone-200 bg-white px-4 py-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div className="min-w-0 space-y-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="truncate text-sm font-medium text-stone-800">{item.name}</div>
+                          <Badge variant={item.enabled ? "success" : "secondary"} className="rounded-md">
+                            {item.enabled ? t("已启用", "Enabled") : t("已禁用", "Disabled")}
+                          </Badge>
+                        </div>
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                          <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
+                            <div className="text-stone-400">{t("文生图剩余额度", "Generate quota left")}</div>
+                            <div className="mt-1 text-sm font-semibold text-stone-800">{formatQuotaValue(item.generate_remaining, t)}</div>
+                          </div>
+                          <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
+                            <div className="text-stone-400">{t("图生图剩余额度", "Edit quota left")}</div>
+                            <div className="mt-1 text-sm font-semibold text-stone-800">{formatQuotaValue(item.edit_remaining, t)}</div>
+                          </div>
+                          <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
+                            <div className="text-stone-400">{t("文生图已使用", "Generate used")}</div>
+                            <div className="mt-1 text-sm font-semibold text-stone-800">{item.generate_used}</div>
+                          </div>
+                          <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
+                            <div className="text-stone-400">{t("图生图已使用", "Edit used")}</div>
+                            <div className="mt-1 text-sm font-semibold text-stone-800">{item.edit_used}</div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
+                          <span>{t("创建时间", "Created")} {formatDateTime(item.created_at, isEnglish)}</span>
+                          <span>{t("最近使用", "Last used")} {formatDateTime(item.last_used_at, isEnglish)}</span>
+                        </div>
                       </div>
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
-                        <span>{t("创建时间", "Created")} {formatDateTime(item.created_at, isEnglish)}</span>
-                        <span>{t("最近使用", "Last used")} {formatDateTime(item.last_used_at, isEnglish)}</span>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-9 rounded-xl border-stone-200 bg-white px-4 text-stone-700"
-                        onClick={() => void handleToggle(item)}
-                        disabled={isPending}
-                      >
-                        {isPending ? (
-                          <LoaderCircle className="size-4 animate-spin" />
-                        ) : item.enabled ? (
-                          <Ban className="size-4" />
-                        ) : (
-                          <CheckCircle2 className="size-4" />
-                        )}
-                        {item.enabled ? t("禁用", "Disable") : t("启用", "Enable")}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-9 rounded-xl border-rose-200 bg-white px-4 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
-                        onClick={() => setDeletingItem(item)}
-                        disabled={isPending}
-                      >
-                        {isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                        {t("删除", "Delete")}
-                      </Button>
+                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 rounded-xl border-stone-200 bg-white px-4 text-stone-700"
+                          onClick={() => openEditDialog(item)}
+                          disabled={isPending}
+                        >
+                          <Settings2 className="size-4" />
+                          {t("编辑额度", "Edit quota")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 rounded-xl border-stone-200 bg-white px-4 text-stone-700"
+                          onClick={() => void handleToggle(item)}
+                          disabled={isPending}
+                        >
+                          {isPending ? (
+                            <LoaderCircle className="size-4 animate-spin" />
+                          ) : item.enabled ? (
+                            <Ban className="size-4" />
+                          ) : (
+                            <CheckCircle2 className="size-4" />
+                          )}
+                          {item.enabled ? t("禁用", "Disable") : t("启用", "Enable")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 rounded-xl border-rose-200 bg-white px-4 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                          onClick={() => setDeletingItem(item)}
+                          disabled={isPending}
+                        >
+                          {isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                          {t("删除", "Delete")}
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -243,24 +337,55 @@ export function UserKeysCard() {
           <DialogHeader className="gap-2">
             <DialogTitle>{t("创建用户密钥", "Create user key")}</DialogTitle>
             <DialogDescription className="text-sm leading-6">
-              {t("可选填写一个备注名称，方便区分不同使用者；创建后会生成一条只能查看一次的原始密钥。", "You can optionally add a note to distinguish different users. After creation, the raw key will only be shown once.")}
+              {t("可选填写一个备注名称，并为文生图/图生图设置独立额度；额度留空表示不限量。创建后会生成一条只能查看一次的原始密钥。", "You can optionally add a note and set separate generate/edit quotas. Leave a quota blank for unlimited use. After creation, the raw key will only be shown once.")}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-stone-700">{t("名称（可选）", "Name (optional)")}</label>
-            <Input
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder={t("例如：设计同学 A、运营临时账号", "For example: Designer A, temp ops account")}
-              className="h-11 rounded-xl border-stone-200 bg-white"
-            />
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-stone-700">{t("名称（可选）", "Name (optional)")}</label>
+              <Input
+                value={createName}
+                onChange={(event) => setCreateName(event.target.value)}
+                placeholder={t("例如：设计同学 A、运营临时账号", "For example: Designer A, temp ops account")}
+                className="h-11 rounded-xl border-stone-200 bg-white"
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-stone-700">{t("文生图额度", "Generate quota")}</label>
+                <Input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={createGenerateQuota}
+                  onChange={(event) => setCreateGenerateQuota(event.target.value)}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
+                  className="h-11 rounded-xl border-stone-200 bg-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-stone-700">{t("图生图额度", "Edit quota")}</label>
+                <Input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={createEditQuota}
+                  onChange={(event) => setCreateEditQuota(event.target.value)}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
+                  className="h-11 rounded-xl border-stone-200 bg-white"
+                />
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button
               type="button"
               variant="secondary"
               className="h-10 rounded-xl bg-stone-100 px-5 text-stone-700 hover:bg-stone-200"
-              onClick={() => setIsDialogOpen(false)}
+              onClick={() => {
+                setIsDialogOpen(false);
+                resetCreateForm();
+              }}
               disabled={isCreating}
             >
               {t("取消", "Cancel")}
@@ -273,6 +398,79 @@ export function UserKeysCard() {
             >
               {isCreating ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
               {t("创建", "Create")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(editingItem)} onOpenChange={(open) => (!open ? setEditingItem(null) : null)}>
+        <DialogContent className="rounded-2xl p-6">
+          <DialogHeader className="gap-2">
+            <DialogTitle>{t("编辑用户密钥额度", "Edit user key quota")}</DialogTitle>
+            <DialogDescription className="text-sm leading-6">
+              {t("可以修改备注名称，并单独调整文生图/图生图剩余额度；额度留空表示不限量。", "You can update the note and adjust generate/edit remaining quota separately. Leave a quota blank for unlimited use.")}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-stone-700">{t("名称", "Name")}</label>
+              <Input
+                value={editingName}
+                onChange={(event) => setEditingName(event.target.value)}
+                className="h-11 rounded-xl border-stone-200 bg-white"
+              />
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-stone-700">{t("文生图剩余额度", "Generate quota left")}</label>
+                <Input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={editingGenerateQuota}
+                  onChange={(event) => setEditingGenerateQuota(event.target.value)}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
+                  className="h-11 rounded-xl border-stone-200 bg-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-stone-700">{t("图生图剩余额度", "Edit quota left")}</label>
+                <Input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={editingEditQuota}
+                  onChange={(event) => setEditingEditQuota(event.target.value)}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
+                  className="h-11 rounded-xl border-stone-200 bg-white"
+                />
+              </div>
+            </div>
+            {editingItem ? (
+              <div className="grid gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-600 sm:grid-cols-2">
+                <div>{t("文生图已使用", "Generate used")}: <span className="font-semibold text-stone-800">{editingItem.generate_used}</span></div>
+                <div>{t("图生图已使用", "Edit used")}: <span className="font-semibold text-stone-800">{editingItem.edit_used}</span></div>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              className="h-10 rounded-xl bg-stone-100 px-5 text-stone-700 hover:bg-stone-200"
+              onClick={() => setEditingItem(null)}
+              disabled={isSavingEdit}
+            >
+              {t("取消", "Cancel")}
+            </Button>
+            <Button
+              type="button"
+              className="h-10 rounded-xl bg-stone-950 px-5 text-white hover:bg-stone-800"
+              onClick={() => void handleSaveEdit()}
+              disabled={isSavingEdit}
+            >
+              {isSavingEdit ? <LoaderCircle className="size-4 animate-spin" /> : <Settings2 className="size-4" />}
+              {t("保存", "Save")}
             </Button>
           </DialogFooter>
         </DialogContent>

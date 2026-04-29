@@ -14,6 +14,14 @@ from services.storage.base import StorageBackend
 AuthRole = Literal["admin", "user"]
 
 
+class UserKeyQuotaExceededError(RuntimeError):
+    def __init__(self, quota_type: Literal["generate", "edit"], remaining: int, requested: int):
+        self.quota_type = quota_type
+        self.remaining = remaining
+        self.requested = requested
+        super().__init__(f"user key {quota_type} quota exhausted")
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -33,6 +41,37 @@ class AuthService:
     def _clean(value: object) -> str:
         return str(value or "").strip()
 
+    @staticmethod
+    def _normalize_quota(value: object) -> int | None:
+        if value is None:
+            return None
+        text = str(value).strip()
+        if not text:
+            return None
+        try:
+            return max(0, int(float(text)))
+        except Exception:
+            return None
+
+    @staticmethod
+    def _normalize_counter(value: object) -> int:
+        try:
+            return max(0, int(float(str(value or 0).strip() or 0)))
+        except Exception:
+            return 0
+
+    @staticmethod
+    def _quota_field_names(quota_type: Literal["generate", "edit"]) -> tuple[str, str]:
+        if quota_type == "edit":
+            return "edit_remaining", "edit_used"
+        return "generate_remaining", "generate_used"
+
+    def _find_item_index_by_id(self, item_id: str) -> int:
+        for index, item in enumerate(self._items):
+            if self._clean(item.get("id")) == item_id:
+                return index
+        return -1
+
     def _normalize_item(self, raw: object) -> dict[str, object] | None:
         if not isinstance(raw, dict):
             return None
@@ -46,6 +85,10 @@ class AuthService:
         name = self._clean(raw.get("name")) or ("管理员密钥" if role == "admin" else "普通用户")
         created_at = self._clean(raw.get("created_at")) or _now_iso()
         last_used_at = self._clean(raw.get("last_used_at")) or None
+        generate_remaining = self._normalize_quota(raw.get("generate_remaining"))
+        edit_remaining = self._normalize_quota(raw.get("edit_remaining"))
+        generate_used = self._normalize_counter(raw.get("generate_used"))
+        edit_used = self._normalize_counter(raw.get("edit_used"))
         return {
             "id": item_id,
             "name": name,
@@ -54,6 +97,10 @@ class AuthService:
             "enabled": bool(raw.get("enabled", True)),
             "created_at": created_at,
             "last_used_at": last_used_at,
+            "generate_remaining": generate_remaining,
+            "edit_remaining": edit_remaining,
+            "generate_used": generate_used,
+            "edit_used": edit_used,
         }
 
     def _load(self) -> list[dict[str, object]]:
@@ -77,6 +124,10 @@ class AuthService:
             "enabled": bool(item.get("enabled", True)),
             "created_at": item.get("created_at"),
             "last_used_at": item.get("last_used_at"),
+            "generate_remaining": item.get("generate_remaining"),
+            "edit_remaining": item.get("edit_remaining"),
+            "generate_used": int(item.get("generate_used") or 0),
+            "edit_used": int(item.get("edit_used") or 0),
         }
 
     def list_keys(self, role: AuthRole | None = None) -> list[dict[str, object]]:
@@ -84,7 +135,14 @@ class AuthService:
             items = [item for item in self._items if role is None or item.get("role") == role]
             return [self._public_item(item) for item in items]
 
-    def create_key(self, *, role: AuthRole, name: str = "") -> tuple[dict[str, object], str]:
+    def create_key(
+        self,
+        *,
+        role: AuthRole,
+        name: str = "",
+        generate_remaining: int | None = None,
+        edit_remaining: int | None = None,
+    ) -> tuple[dict[str, object], str]:
         normalized_name = self._clean(name) or ("管理员密钥" if role == "admin" else "普通用户")
         raw_key = f"sk-{secrets.token_urlsafe(24)}"
         item = {
@@ -95,6 +153,10 @@ class AuthService:
             "enabled": True,
             "created_at": _now_iso(),
             "last_used_at": None,
+            "generate_remaining": self._normalize_quota(generate_remaining),
+            "edit_remaining": self._normalize_quota(edit_remaining),
+            "generate_used": 0,
+            "edit_used": 0,
         }
         with self._lock:
             self._items.append(item)
@@ -122,6 +184,14 @@ class AuthService:
                     next_item["name"] = self._clean(updates.get("name")) or next_item.get("name") or "普通用户"
                 if "enabled" in updates and updates.get("enabled") is not None:
                     next_item["enabled"] = bool(updates.get("enabled"))
+                if "generate_remaining" in updates:
+                    next_item["generate_remaining"] = self._normalize_quota(updates.get("generate_remaining"))
+                if "edit_remaining" in updates:
+                    next_item["edit_remaining"] = self._normalize_quota(updates.get("edit_remaining"))
+                if "generate_used" in updates:
+                    next_item["generate_used"] = self._normalize_counter(updates.get("generate_used"))
+                if "edit_used" in updates:
+                    next_item["edit_used"] = self._normalize_counter(updates.get("edit_used"))
                 self._items[index] = next_item
                 self._save()
                 return self._public_item(next_item)
@@ -169,6 +239,94 @@ class AuthService:
                         pass
                 return self._public_item(next_item)
         return None
+
+    def reserve_image_quota(
+        self,
+        identity: dict[str, object],
+        quota_type: Literal["generate", "edit"],
+        amount: int = 1,
+    ) -> dict[str, object] | None:
+        if identity.get("role") != "user":
+            return None
+        key_id = self._clean(identity.get("id"))
+        if not key_id:
+            return None
+        requested = max(1, int(amount or 1))
+        remaining_field, used_field = self._quota_field_names(quota_type)
+        with self._lock:
+            index = self._find_item_index_by_id(key_id)
+            if index < 0:
+                return None
+            next_item = dict(self._items[index])
+            remaining_value = next_item.get(remaining_field)
+            deducted = 0
+            if remaining_value is not None:
+                remaining = self._normalize_counter(remaining_value)
+                if remaining < requested:
+                    raise UserKeyQuotaExceededError(quota_type, remaining, requested)
+                next_item[remaining_field] = remaining - requested
+                deducted = requested
+                self._items[index] = next_item
+                self._save()
+            return {
+                "key_id": key_id,
+                "quota_type": quota_type,
+                "remaining_field": remaining_field,
+                "used_field": used_field,
+                "amount": requested,
+                "deducted": deducted,
+            }
+
+    def commit_image_quota(self, reservation: dict[str, object] | None) -> None:
+        if not reservation:
+            return
+        key_id = self._clean(reservation.get("key_id"))
+        used_field = self._clean(reservation.get("used_field"))
+        amount = self._normalize_counter(reservation.get("amount"))
+        if not key_id or not used_field or amount <= 0:
+            return
+        with self._lock:
+            index = self._find_item_index_by_id(key_id)
+            if index < 0:
+                return
+            next_item = dict(self._items[index])
+            next_item[used_field] = self._normalize_counter(next_item.get(used_field)) + amount
+            self._items[index] = next_item
+            self._save()
+
+    def refund_image_quota(self, reservation: dict[str, object] | None) -> None:
+        if not reservation:
+            return
+        key_id = self._clean(reservation.get("key_id"))
+        remaining_field = self._clean(reservation.get("remaining_field"))
+        deducted = self._normalize_counter(reservation.get("deducted"))
+        if not key_id or not remaining_field or deducted <= 0:
+            return
+        with self._lock:
+            index = self._find_item_index_by_id(key_id)
+            if index < 0:
+                return
+            next_item = dict(self._items[index])
+            remaining = self._normalize_quota(next_item.get(remaining_field))
+            next_item[remaining_field] = deducted if remaining is None else remaining + deducted
+            self._items[index] = next_item
+            self._save()
+
+    def is_identity_active(self, identity: dict[str, object]) -> bool:
+        role = self._clean(identity.get("role")).lower()
+        if role == "admin":
+            return True
+        if role != "user":
+            return False
+        key_id = self._clean(identity.get("id"))
+        if not key_id:
+            return False
+        with self._lock:
+            index = self._find_item_index_by_id(key_id)
+            if index < 0:
+                return False
+            item = self._items[index]
+            return item.get("role") == "user" and bool(item.get("enabled", True))
 
 
 auth_service = AuthService(config.get_storage_backend())

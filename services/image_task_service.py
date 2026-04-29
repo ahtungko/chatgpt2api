@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from services.auth_service import auth_service
 from services.config import DATA_DIR, config
 from services.log_service import LoggedCall
 from services.protocol import openai_v1_image_edit, openai_v1_image_generations
@@ -44,6 +45,11 @@ def _clean(value: object, default: str = "") -> str:
 
 def _owner_id(identity: dict[str, object]) -> str:
     return _clean(identity.get("id")) or "anonymous"
+
+
+def _owner_role(identity: dict[str, object]) -> str:
+    role = _clean(identity.get("role")).lower()
+    return role if role in {"admin", "user"} else "user"
 
 
 def _task_key(owner_id: str, task_id: str) -> str:
@@ -174,6 +180,8 @@ class ImageTaskService:
         key = _task_key(owner, task_id)
         now = _now_iso()
         should_start = False
+        quota_type = "edit" if mode == "edit" else "generate"
+        reservation: dict[str, object] | None = None
         with self._lock:
             cleaned = self._cleanup_locked()
             task = self._tasks.get(key)
@@ -181,9 +189,13 @@ class ImageTaskService:
                 if cleaned:
                     self._save_locked()
                 return _public_task(task)
+            if _owner_role(identity) == "user" and not auth_service.is_identity_active(identity):
+                raise RuntimeError("user key is invalid or disabled")
+            reservation = auth_service.reserve_image_quota(identity, quota_type, 1)
             task = {
                 "id": task_id,
                 "owner_id": owner,
+                "owner_role": _owner_role(identity),
                 "status": TASK_STATUS_QUEUED,
                 "mode": mode,
                 "model": _clean(payload.get("model"), "gpt-image-2"),
@@ -191,8 +203,15 @@ class ImageTaskService:
                 "created_at": now,
                 "updated_at": now,
             }
+            if reservation is not None:
+                task["quota_reservation"] = dict(reservation)
             self._tasks[key] = task
-            self._save_locked()
+            try:
+                self._save_locked()
+            except Exception:
+                auth_service.refund_image_quota(reservation)
+                self._tasks.pop(key, None)
+                raise
             should_start = True
 
         if should_start:
@@ -206,6 +225,22 @@ class ImageTaskService:
         return _public_task(task)
 
     def _run_task(self, key: str, mode: str, payload: dict[str, Any], call: LoggedCall | None = None) -> None:
+        snapshot = self._tasks.get(key, {})
+        owner_id = _clean(snapshot.get("owner_id"))
+        owner_role = _clean(snapshot.get("owner_role")).lower()
+        if owner_role == "user" and not auth_service.is_identity_active({"id": owner_id, "role": "user"}):
+            reservation = snapshot.get("quota_reservation")
+            auth_service.refund_image_quota(reservation if isinstance(reservation, dict) else None)
+            self._update_task(
+                key,
+                status=TASK_STATUS_ERROR,
+                error="user key is invalid or disabled",
+                data=[],
+                quota_reservation=None,
+            )
+            if call is not None:
+                call.log("调用失败", status="failed", error="user key is invalid or disabled")
+            return
         self._update_task(key, status=TASK_STATUS_RUNNING, error="")
         try:
             handler = self.edit_handler if mode == "edit" else self.generation_handler
@@ -216,11 +251,21 @@ class ImageTaskService:
             if not isinstance(data, list) or not data:
                 message = _clean(result.get("message")) or "image task returned no image data"
                 raise RuntimeError(message)
-            self._update_task(key, status=TASK_STATUS_SUCCESS, data=data, error="")
+            reservation = self._tasks.get(key, {}).get("quota_reservation")
+            auth_service.commit_image_quota(reservation if isinstance(reservation, dict) else None)
+            self._update_task(key, status=TASK_STATUS_SUCCESS, data=data, error="", quota_reservation=None)
             if call is not None:
                 call.log("调用完成", result)
         except Exception as exc:
-            self._update_task(key, status=TASK_STATUS_ERROR, error=str(exc) or "image task failed", data=[])
+            reservation = self._tasks.get(key, {}).get("quota_reservation")
+            auth_service.refund_image_quota(reservation if isinstance(reservation, dict) else None)
+            self._update_task(
+                key,
+                status=TASK_STATUS_ERROR,
+                error=str(exc) or "image task failed",
+                data=[],
+                quota_reservation=None,
+            )
             if call is not None:
                 call.log("调用失败", status="failed", error=str(exc) or "image task failed")
 
@@ -257,6 +302,7 @@ class ImageTaskService:
             task = {
                 "id": task_id,
                 "owner_id": owner,
+                "owner_role": _clean(item.get("owner_role"), "user"),
                 "status": status,
                 "mode": "edit" if item.get("mode") == "edit" else "generate",
                 "model": _clean(item.get("model"), "gpt-image-2"),
@@ -270,6 +316,9 @@ class ImageTaskService:
             error = _clean(item.get("error"))
             if error:
                 task["error"] = error
+            quota_reservation = item.get("quota_reservation")
+            if isinstance(quota_reservation, dict):
+                task["quota_reservation"] = dict(quota_reservation)
             tasks[_task_key(owner, task_id)] = task
         return tasks
 
@@ -283,6 +332,10 @@ class ImageTaskService:
         changed = False
         for task in self._tasks.values():
             if task.get("status") in UNFINISHED_STATUSES:
+                reservation = task.get("quota_reservation")
+                if isinstance(reservation, dict):
+                    auth_service.refund_image_quota(reservation)
+                    task["quota_reservation"] = None
                 task["status"] = TASK_STATUS_ERROR
                 task["error"] = "服务已重启，未完成的图片任务已中断"
                 task["updated_at"] = _now_iso()
