@@ -55,6 +55,26 @@ class FakeImageTaskService:
             "missing_ids": [task_id for task_id in ids if task_id == "missing"],
         }
 
+    def list_running_tasks(self):
+        return {
+            "items": [
+                {
+                    "id": "running-1",
+                    "status": "running",
+                    "mode": "generate",
+                    "model": "gpt-image-2",
+                    "size": "1024x1024",
+                    "owner_id": "admin",
+                    "owner_role": "admin",
+                    "owner_name": "Admin",
+                    "prompt_preview": "cat",
+                    "created_at": "2026-01-01 00:00:00",
+                    "updated_at": "2026-01-01 00:00:01",
+                }
+            ],
+            "stats": {"total": 1, "queued": 0, "running": 1},
+        }
+
 
 class ImageTasksApiTests(unittest.TestCase):
     def setUp(self):
@@ -103,6 +123,15 @@ class ImageTasksApiTests(unittest.TestCase):
         payload = response.json()
         self.assertEqual([item["id"] for item in payload["items"]], ["task-1"])
         self.assertEqual(payload["missing_ids"], ["missing"])
+
+    def test_admin_can_list_running_tasks(self):
+        response = self.client.get("/api/admin/image-tasks/running", headers=AUTH_HEADERS)
+
+        self.assertEqual(response.status_code, 200, response.text)
+        payload = response.json()
+        self.assertEqual(payload["stats"]["running"], 1)
+        self.assertEqual(payload["items"][0]["id"], "running-1")
+        self.assertEqual(payload["items"][0]["owner_name"], "Admin")
 
 
 if __name__ == "__main__":

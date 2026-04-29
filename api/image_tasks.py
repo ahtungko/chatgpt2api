@@ -4,7 +4,7 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
-from api.support import require_identity, resolve_image_base_url
+from api.support import require_admin, require_identity, resolve_image_base_url
 from services.auth_service import UserKeyQuotaExceededError
 from services.image_task_service import image_task_service
 
@@ -30,6 +30,11 @@ def create_router() -> APIRouter:
     ):
         identity = require_identity(authorization)
         return await run_in_threadpool(image_task_service.list_tasks, identity, _parse_task_ids(ids))
+
+    @router.get("/api/admin/image-tasks/running")
+    async def list_running_image_tasks(authorization: str | None = Header(default=None)):
+        require_admin(authorization)
+        return await run_in_threadpool(image_task_service.list_running_tasks)
 
     @router.post("/api/image-tasks/generations")
     async def create_generation_task(

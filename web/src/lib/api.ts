@@ -90,6 +90,7 @@ export type ImageTask = {
   size?: string;
   created_at: string;
   updated_at: string;
+  prompt_preview?: string;
   data?: Array<{ b64_json?: string; url?: string; revised_prompt?: string }>;
   error?: string;
 };
@@ -97,6 +98,21 @@ export type ImageTask = {
 type ImageTaskListResponse = {
   items: ImageTask[];
   missing_ids: string[];
+};
+
+export type AdminImageTask = ImageTask & {
+  owner_id?: string;
+  owner_role?: AuthRole;
+  owner_name?: string;
+};
+
+type AdminImageTaskListResponse = {
+  items: AdminImageTask[];
+  stats: {
+    total: number;
+    queued: number;
+    running: number;
+  };
 };
 
 export type LoginResponse = {
@@ -299,6 +315,10 @@ export async function fetchImageTasks(ids: string[]) {
     params.set("ids", ids.join(","));
   }
   return httpRequest<ImageTaskListResponse>(`/api/image-tasks${params.toString() ? `?${params.toString()}` : ""}`);
+}
+
+export async function fetchRunningImageTasks() {
+  return httpRequest<AdminImageTaskListResponse>("/api/admin/image-tasks/running");
 }
 
 export async function fetchSettingsConfig() {

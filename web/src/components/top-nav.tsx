@@ -11,7 +11,7 @@ import { useAppLocale } from "@/i18n/locale";
 import { cn } from "@/lib/utils";
 import { clearStoredAuthSession, getStoredAuthSession, type StoredAuthSession } from "@/store/auth";
 
-const adminNavItems = ["/image", "/accounts", "/register", "/image-manager", "/logs", "/settings"] as const;
+const adminNavItems = ["/image", "/accounts", "/register", "/tasks", "/image-manager", "/logs", "/settings"] as const;
 const userNavItems = ["/image"] as const;
 
 export function TopNav() {
@@ -58,6 +58,7 @@ export function TopNav() {
     "/image": isEnglish ? "Images" : "画图",
     "/accounts": isEnglish ? "Accounts" : "号池管理",
     "/register": isEnglish ? "Register" : "注册机",
+    "/tasks": isEnglish ? "Tasks" : "任务",
     "/image-manager": isEnglish ? "Image Manager" : "图片管理",
     "/logs": isEnglish ? "Logs" : "日志管理",
     "/settings": isEnglish ? "Settings" : "设置",

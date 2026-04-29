@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -143,6 +144,57 @@ class ImageTaskServiceTests(unittest.TestCase):
 
             self.assertEqual([item["status"] for item in result["items"]], ["error", "error"])
             self.assertTrue(all("已中断" in item.get("error", "") for item in result["items"]))
+
+
+    def test_admin_can_list_running_tasks_across_owners(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            release = threading.Event()
+
+            def handler(_payload):
+                release.wait(timeout=2)
+                return {"data": [{"url": "http://example.test/image.png"}]}
+
+            service = self.make_service(Path(tmp_dir) / "image_tasks.json", handler)
+            other_admin = {**OTHER_OWNER, "role": "admin"}
+            try:
+                service.submit_generation(
+                    OWNER,
+                    client_task_id="admin-task",
+                    prompt="cat",
+                    model="gpt-image-2",
+                    size="1024x1024",
+                    base_url="http://local.test",
+                )
+                service.submit_generation(
+                    other_admin,
+                    client_task_id="user-task",
+                    prompt="dog",
+                    model="gpt-image-2",
+                    size=None,
+                    base_url="http://local.test",
+                )
+
+                deadline = time.time() + 2
+                result = {"items": [], "stats": {"total": 0}}
+                while time.time() < deadline:
+                    result = service.list_running_tasks()
+                    if len(result["items"]) == 2:
+                        break
+                    time.sleep(0.02)
+
+                items = {item["id"]: item for item in result["items"]}
+                self.assertEqual(result["stats"]["total"], 2)
+                self.assertEqual(set(items), {"admin-task", "user-task"})
+                self.assertEqual(items["admin-task"]["owner_name"], "Owner")
+                self.assertEqual(items["user-task"]["owner_name"], "Other")
+                self.assertEqual(items["admin-task"]["prompt_preview"], "cat")
+            finally:
+                release.set()
+                try:
+                    wait_for_task(service, OWNER, "admin-task", "success")
+                    wait_for_task(service, other_admin, "user-task", "success")
+                except Exception:
+                    pass
 
 
 if __name__ == "__main__":

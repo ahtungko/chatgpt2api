@@ -19,6 +19,7 @@ TASK_STATUS_SUCCESS = "success"
 TASK_STATUS_ERROR = "error"
 TERMINAL_STATUSES = {TASK_STATUS_SUCCESS, TASK_STATUS_ERROR}
 UNFINISHED_STATUSES = {TASK_STATUS_QUEUED, TASK_STATUS_RUNNING}
+PROMPT_PREVIEW_LIMIT = 500
 
 
 def _now_iso() -> str:
@@ -43,6 +44,13 @@ def _clean(value: object, default: str = "") -> str:
     return str(value or default).strip()
 
 
+def _prompt_preview(value: object) -> str:
+    text = _clean(value)
+    if len(text) <= PROMPT_PREVIEW_LIMIT:
+        return text
+    return f"{text[:PROMPT_PREVIEW_LIMIT]}..."
+
+
 def _owner_id(identity: dict[str, object]) -> str:
     return _clean(identity.get("id")) or "anonymous"
 
@@ -56,7 +64,7 @@ def _task_key(owner_id: str, task_id: str) -> str:
     return f"{owner_id}:{task_id}"
 
 
-def _public_task(task: dict[str, Any]) -> dict[str, Any]:
+def _public_task(task: dict[str, Any], *, include_owner: bool = False) -> dict[str, Any]:
     item = {
         "id": task.get("id"),
         "status": task.get("status"),
@@ -66,11 +74,31 @@ def _public_task(task: dict[str, Any]) -> dict[str, Any]:
         "created_at": task.get("created_at"),
         "updated_at": task.get("updated_at"),
     }
+    if include_owner:
+        item["owner_id"] = task.get("owner_id")
+        item["owner_role"] = task.get("owner_role")
+        if task.get("owner_name"):
+            item["owner_name"] = task.get("owner_name")
+    if task.get("prompt_preview"):
+        item["prompt_preview"] = task.get("prompt_preview")
     if task.get("data") is not None:
         item["data"] = task.get("data")
     if task.get("error"):
         item["error"] = task.get("error")
     return item
+
+
+def _owner_names_by_id() -> dict[str, str]:
+    names = {"admin": "管理员"}
+    try:
+        for item in auth_service.list_keys():
+            owner_id = _clean(item.get("id"))
+            name = _clean(item.get("name"))
+            if owner_id and name:
+                names[owner_id] = name
+    except Exception:
+        pass
+    return names
 
 
 class ImageTaskService:
@@ -164,6 +192,29 @@ class ImageTaskService:
                 missing_ids = []
             return {"items": items, "missing_ids": missing_ids}
 
+    def list_running_tasks(self) -> dict[str, Any]:
+        owner_names = _owner_names_by_id()
+        with self._lock:
+            if self._cleanup_locked():
+                self._save_locked()
+            tasks = []
+            for task in self._tasks.values():
+                if task.get("status") not in UNFINISHED_STATUSES:
+                    continue
+                item = dict(task)
+                owner_id = _clean(item.get("owner_id"))
+                item["owner_name"] = owner_names.get(owner_id) or _clean(item.get("owner_name")) or owner_id or "unknown"
+                tasks.append(_public_task(item, include_owner=True))
+            tasks.sort(key=lambda item: str(item.get("created_at") or ""), reverse=True)
+            return {
+                "items": tasks,
+                "stats": {
+                    "total": len(tasks),
+                    "queued": sum(1 for task in tasks if task.get("status") == TASK_STATUS_QUEUED),
+                    "running": sum(1 for task in tasks if task.get("status") == TASK_STATUS_RUNNING),
+                },
+            }
+
     def _submit(
         self,
         identity: dict[str, object],
@@ -196,10 +247,12 @@ class ImageTaskService:
                 "id": task_id,
                 "owner_id": owner,
                 "owner_role": _owner_role(identity),
+                "owner_name": _clean(identity.get("name")),
                 "status": TASK_STATUS_QUEUED,
                 "mode": mode,
                 "model": _clean(payload.get("model"), "gpt-image-2"),
                 "size": _clean(payload.get("size")),
+                "prompt_preview": _prompt_preview(payload.get("prompt")),
                 "created_at": now,
                 "updated_at": now,
             }
@@ -303,10 +356,12 @@ class ImageTaskService:
                 "id": task_id,
                 "owner_id": owner,
                 "owner_role": _clean(item.get("owner_role"), "user"),
+                "owner_name": _clean(item.get("owner_name")),
                 "status": status,
                 "mode": "edit" if item.get("mode") == "edit" else "generate",
                 "model": _clean(item.get("model"), "gpt-image-2"),
                 "size": _clean(item.get("size")),
+                "prompt_preview": _prompt_preview(item.get("prompt_preview")),
                 "created_at": _clean(item.get("created_at"), _now_iso()),
                 "updated_at": _clean(item.get("updated_at"), _clean(item.get("created_at"), _now_iso())),
             }
