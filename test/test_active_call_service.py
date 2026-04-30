@@ -4,6 +4,8 @@ import asyncio
 import threading
 import unittest
 
+from fastapi.responses import JSONResponse
+
 from services.log_service import LoggedCall, active_call_service
 
 
@@ -53,6 +55,22 @@ class ActiveCallServiceTests(unittest.TestCase):
                 release.set()
                 await running
 
+            self.assertEqual(active_call_service.list_running(), [])
+
+        asyncio.run(run_case())
+
+    def test_image_call_without_image_data_is_not_logged_as_success(self):
+        async def run_case():
+            call = LoggedCall(
+                {"id": "user-1", "name": "Browser", "role": "user"},
+                "/v1/images/edits",
+                "gpt-image-2",
+                "image",
+            )
+            result = await call.run(lambda _payload: {"created": 1, "data": [], "message": "image api returned no image data"}, {"prompt": "cat"})
+
+            self.assertIsInstance(result, JSONResponse)
+            self.assertEqual(result.status_code, 502)
             self.assertEqual(active_call_service.list_running(), [])
 
         asyncio.run(run_case())

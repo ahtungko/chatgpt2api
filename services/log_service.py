@@ -159,6 +159,18 @@ def _mode_from_endpoint(endpoint: str) -> str:
     return endpoint.rsplit("/", 1)[-1] or "api"
 
 
+def _is_image_endpoint(endpoint: str) -> bool:
+    return endpoint.endswith("/images/generations") or endpoint.endswith("/images/edits")
+
+
+def _image_result_error(result: dict[str, Any]) -> str:
+    data = result.get("data")
+    if isinstance(data, list) and data:
+        return ""
+    message = _clean(result.get("message"))
+    return message or "image api returned no image data"
+
+
 class ActiveCallService:
     def __init__(self):
         self._lock = RLock()
@@ -293,6 +305,11 @@ class LoggedCall:
                 raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
             if isinstance(result, dict):
+                if _is_image_endpoint(self.endpoint):
+                    error = _image_result_error(result)
+                    if error:
+                        self.log(" failed", status="failed", error=error)
+                        return _image_error_response(ImageGenerationError(error))
                 self.log(" completed", result)
                 return result
 
