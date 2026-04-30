@@ -264,54 +264,74 @@ class LoggedCall:
     summary: str
     started: float = field(default_factory=time.time)
 
-    async def run(self, handler, *args, sse: str = "openai"):
+    async def run(self, handler, *args, sse: str = "openai", task_reservation=None, task_finish=None):
         from services.protocol.conversation import ImageGenerationError
 
         active_call_id = active_call_service.start(self, args)
         finish_on_return = True
+        reservation_finished = False
+
+        def finish_task_reservation() -> None:
+            nonlocal reservation_finished
+            if reservation_finished:
+                return
+            reservation_finished = True
+            if task_finish is not None:
+                task_finish(task_reservation)
+
         try:
             try:
                 result = await run_in_threadpool(handler, *args)
             except ImageGenerationError as exc:
-                self.log('调用失败', status="failed", error=str(exc))
+                self.log(" failed", status="failed", error=str(exc))
                 return _image_error_response(exc)
             except HTTPException as exc:
-                self.log('调用失败', status="failed", error=str(exc.detail))
+                self.log(" failed", status="failed", error=str(exc.detail))
                 raise
             except Exception as exc:
-                self.log('调用失败', status="failed", error=str(exc))
+                self.log(" failed", status="failed", error=str(exc))
                 raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
 
             if isinstance(result, dict):
-                self.log('调用完成', result)
+                self.log(" completed", result)
                 return result
 
             sender = anthropic_sse_stream if sse == "anthropic" else sse_json_stream
             try:
                 has_first, first = await run_in_threadpool(_next_item, result)
             except ImageGenerationError as exc:
-                self.log('调用失败', status="failed", error=str(exc))
+                self.log(" failed", status="failed", error=str(exc))
                 return _image_error_response(exc)
             except HTTPException as exc:
-                self.log('调用失败', status="failed", error=str(exc.detail))
+                self.log(" failed", status="failed", error=str(exc.detail))
                 raise
             except Exception as exc:
-                self.log('调用失败', status="failed", error=str(exc))
+                self.log(" failed", status="failed", error=str(exc))
                 raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
             if not has_first:
-                self.log('流式调用结束')
+                self.log(" stream ended")
                 finish_on_return = False
-                return StreamingResponse(sender(self.stream((), active_call_id=active_call_id)), media_type="text/event-stream")
+                return StreamingResponse(
+                    sender(self.stream((), active_call_id=active_call_id, task_finish=finish_task_reservation)),
+                    media_type="text/event-stream",
+                )
             finish_on_return = False
             return StreamingResponse(
-                sender(self.stream(itertools.chain([first], result), active_call_id=active_call_id)),
+                sender(
+                    self.stream(
+                        itertools.chain([first], result),
+                        active_call_id=active_call_id,
+                        task_finish=finish_task_reservation,
+                    )
+                ),
                 media_type="text/event-stream",
             )
         finally:
             if finish_on_return:
                 active_call_service.finish(active_call_id)
+                finish_task_reservation()
 
-    def stream(self, items, active_call_id: str | None = None):
+    def stream(self, items, active_call_id: str | None = None, task_finish=None):
         urls: list[str] = []
         failed = False
         try:
@@ -320,12 +340,14 @@ class LoggedCall:
                 yield item
         except Exception as exc:
             failed = True
-            self.log('流式调用失败', status="failed", error=str(exc), urls=urls)
+            self.log(" stream failed", status="failed", error=str(exc), urls=urls)
             raise
         finally:
             if not failed:
-                self.log('流式调用结束', urls=urls)
+                self.log(" stream ended", urls=urls)
             active_call_service.finish(active_call_id)
+            if task_finish is not None:
+                task_finish()
 
     def log(self, suffix: str, result: object = None, status: str = "success", error: str = "",
             urls: list[str] | None = None) -> None:

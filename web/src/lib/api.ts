@@ -135,6 +135,7 @@ export type UserKey = {
   last_used_at: string | null;
   generate_remaining: number | null;
   edit_remaining: number | null;
+  max_running_tasks: number | null;
   generate_used: number;
   edit_used: number;
 };
@@ -362,7 +363,7 @@ export async function fetchUserKeys() {
 
 export async function createUserKey(
   name: string,
-  quotas: { generate_remaining?: number | null; edit_remaining?: number | null } = {},
+  quotas: { generate_remaining?: number | null; edit_remaining?: number | null; max_running_tasks?: number | null } = {},
 ) {
   return httpRequest<{ item: UserKey; key: string; items: UserKey[] }>("/api/auth/users", {
     method: "POST",
@@ -377,6 +378,7 @@ export async function updateUserKey(
     name?: string;
     generate_remaining?: number | null;
     edit_remaining?: number | null;
+    max_running_tasks?: number | null;
   },
 ) {
   return httpRequest<{ item: UserKey; items: UserKey[] }>(`/api/auth/users/${keyId}`, {

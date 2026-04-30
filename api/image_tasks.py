@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 from api.support import require_admin, require_identity, resolve_image_base_url
-from services.auth_service import UserKeyQuotaExceededError
+from services.auth_service import UserKeyQuotaExceededError, UserKeyTaskLimitExceededError
 from services.image_task_service import image_task_service
 
 
@@ -55,6 +55,8 @@ def create_router() -> APIRouter:
             )
         except UserKeyQuotaExceededError as exc:
             raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
+        except UserKeyTaskLimitExceededError as exc:
+            raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
 
@@ -91,6 +93,8 @@ def create_router() -> APIRouter:
                 images=images,
             )
         except UserKeyQuotaExceededError as exc:
+            raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
+        except UserKeyTaskLimitExceededError as exc:
             raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
         except ValueError as exc:
             raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc

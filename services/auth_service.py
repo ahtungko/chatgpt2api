@@ -22,6 +22,13 @@ class UserKeyQuotaExceededError(RuntimeError):
         super().__init__(f"user key {quota_type} quota exhausted")
 
 
+class UserKeyTaskLimitExceededError(RuntimeError):
+    def __init__(self, running: int, maximum: int):
+        self.running = running
+        self.maximum = maximum
+        super().__init__(f"user key already has {running} running tasks (limit {maximum})")
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -36,6 +43,7 @@ class AuthService:
         self._lock = Lock()
         self._items = self._load()
         self._last_used_flush_at: dict[str, datetime] = {}
+        self._active_task_counts: dict[str, int] = {}
 
     @staticmethod
     def _clean(value: object) -> str:
@@ -87,6 +95,7 @@ class AuthService:
         last_used_at = self._clean(raw.get("last_used_at")) or None
         generate_remaining = self._normalize_quota(raw.get("generate_remaining"))
         edit_remaining = self._normalize_quota(raw.get("edit_remaining"))
+        max_running_tasks = self._normalize_quota(raw.get("max_running_tasks"))
         generate_used = self._normalize_counter(raw.get("generate_used"))
         edit_used = self._normalize_counter(raw.get("edit_used"))
         return {
@@ -99,6 +108,7 @@ class AuthService:
             "last_used_at": last_used_at,
             "generate_remaining": generate_remaining,
             "edit_remaining": edit_remaining,
+            "max_running_tasks": max_running_tasks,
             "generate_used": generate_used,
             "edit_used": edit_used,
         }
@@ -126,6 +136,7 @@ class AuthService:
             "last_used_at": item.get("last_used_at"),
             "generate_remaining": item.get("generate_remaining"),
             "edit_remaining": item.get("edit_remaining"),
+            "max_running_tasks": item.get("max_running_tasks"),
             "generate_used": int(item.get("generate_used") or 0),
             "edit_used": int(item.get("edit_used") or 0),
         }
@@ -142,6 +153,7 @@ class AuthService:
         name: str = "",
         generate_remaining: int | None = None,
         edit_remaining: int | None = None,
+        max_running_tasks: int | None = None,
     ) -> tuple[dict[str, object], str]:
         normalized_name = self._clean(name) or ("管理员密钥" if role == "admin" else "普通用户")
         raw_key = f"sk-{secrets.token_urlsafe(24)}"
@@ -155,6 +167,7 @@ class AuthService:
             "last_used_at": None,
             "generate_remaining": self._normalize_quota(generate_remaining),
             "edit_remaining": self._normalize_quota(edit_remaining),
+            "max_running_tasks": self._normalize_quota(max_running_tasks),
             "generate_used": 0,
             "edit_used": 0,
         }
@@ -188,6 +201,8 @@ class AuthService:
                     next_item["generate_remaining"] = self._normalize_quota(updates.get("generate_remaining"))
                 if "edit_remaining" in updates:
                     next_item["edit_remaining"] = self._normalize_quota(updates.get("edit_remaining"))
+                if "max_running_tasks" in updates:
+                    next_item["max_running_tasks"] = self._normalize_quota(updates.get("max_running_tasks"))
                 if "generate_used" in updates:
                     next_item["generate_used"] = self._normalize_counter(updates.get("generate_used"))
                 if "edit_used" in updates:
@@ -276,6 +291,39 @@ class AuthService:
                 "amount": requested,
                 "deducted": deducted,
             }
+
+    def reserve_running_task(self, identity: dict[str, object]) -> dict[str, object] | None:
+        if identity.get("role") != "user":
+            return None
+        key_id = self._clean(identity.get("id"))
+        if not key_id:
+            return None
+        with self._lock:
+            index = self._find_item_index_by_id(key_id)
+            if index < 0:
+                return None
+            item = self._items[index]
+            if item.get("role") != "user" or not bool(item.get("enabled", True)):
+                raise RuntimeError("user key is invalid or disabled")
+            running = self._normalize_counter(self._active_task_counts.get(key_id))
+            maximum = self._normalize_quota(item.get("max_running_tasks"))
+            if maximum is not None and running >= maximum:
+                raise UserKeyTaskLimitExceededError(running, maximum)
+            self._active_task_counts[key_id] = running + 1
+            return {"key_id": key_id}
+
+    def release_running_task(self, reservation: dict[str, object] | None) -> None:
+        if not reservation:
+            return
+        key_id = self._clean(reservation.get("key_id"))
+        if not key_id:
+            return
+        with self._lock:
+            running = self._normalize_counter(self._active_task_counts.get(key_id))
+            if running <= 1:
+                self._active_task_counts.pop(key_id, None)
+            else:
+                self._active_task_counts[key_id] = running - 1
 
     def commit_image_quota(self, reservation: dict[str, object] | None) -> None:
         if not reservation:

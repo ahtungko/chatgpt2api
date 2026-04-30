@@ -28,6 +28,7 @@ class UserKeyCreateRequest(BaseModel):
     name: str = ""
     generate_remaining: int | None = Field(default=None, ge=0)
     edit_remaining: int | None = Field(default=None, ge=0)
+    max_running_tasks: int | None = Field(default=None, ge=0)
 
 
 class UserKeyUpdateRequest(BaseModel):
@@ -35,6 +36,7 @@ class UserKeyUpdateRequest(BaseModel):
     enabled: bool | None = None
     generate_remaining: int | None = Field(default=None, ge=0)
     edit_remaining: int | None = Field(default=None, ge=0)
+    max_running_tasks: int | None = Field(default=None, ge=0)
 
 
 class AccountCreateRequest(BaseModel):
@@ -110,6 +112,7 @@ def create_router() -> APIRouter:
             name=body.name,
             generate_remaining=body.generate_remaining,
             edit_remaining=body.edit_remaining,
+            max_running_tasks=body.max_running_tasks,
         )
         return {"item": item, "key": raw_key, "items": auth_service.list_keys(role="user")}
 
@@ -130,6 +133,8 @@ def create_router() -> APIRouter:
             updates["generate_remaining"] = body.generate_remaining
         if "edit_remaining" in payload:
             updates["edit_remaining"] = body.edit_remaining
+        if "max_running_tasks" in payload:
+            updates["max_running_tasks"] = body.max_running_tasks
         if not updates:
             raise HTTPException(status_code=400, detail={"error": "no updates provided"})
         item = auth_service.update_key(key_id, updates, role="user")

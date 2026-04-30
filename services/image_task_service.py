@@ -116,6 +116,7 @@ class ImageTaskService:
         self.retention_days_getter = retention_days_getter or (lambda: config.image_retention_days)
         self._lock = threading.RLock()
         self._tasks: dict[str, dict[str, Any]] = {}
+        self._running_task_reservations: dict[str, dict[str, object]] = {}
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._lock:
             self._tasks = self._load_locked()
@@ -234,6 +235,7 @@ class ImageTaskService:
         should_start = False
         quota_type = "edit" if mode == "edit" else "generate"
         reservation: dict[str, object] | None = None
+        running_task_reservation: dict[str, object] | None = None
         with self._lock:
             cleaned = self._cleanup_locked()
             task = self._tasks.get(key)
@@ -243,7 +245,12 @@ class ImageTaskService:
                 return _public_task(task)
             if _owner_role(identity) == "user" and not auth_service.is_identity_active(identity):
                 raise RuntimeError("user key is invalid or disabled")
-            reservation = auth_service.reserve_image_quota(identity, quota_type, 1)
+            running_task_reservation = auth_service.reserve_running_task(identity)
+            try:
+                reservation = auth_service.reserve_image_quota(identity, quota_type, 1)
+            except Exception:
+                auth_service.release_running_task(running_task_reservation)
+                raise
             task = {
                 "id": task_id,
                 "owner_id": owner,
@@ -260,11 +267,15 @@ class ImageTaskService:
             if reservation is not None:
                 task["quota_reservation"] = dict(reservation)
             self._tasks[key] = task
+            if running_task_reservation is not None:
+                self._running_task_reservations[key] = dict(running_task_reservation)
             try:
                 self._save_locked()
             except Exception:
                 auth_service.refund_image_quota(reservation)
+                auth_service.release_running_task(running_task_reservation)
                 self._tasks.pop(key, None)
+                self._running_task_reservations.pop(key, None)
                 raise
             should_start = True
 
@@ -285,6 +296,7 @@ class ImageTaskService:
         if owner_role == "user" and not auth_service.is_identity_active({"id": owner_id, "role": "user"}):
             reservation = snapshot.get("quota_reservation")
             auth_service.refund_image_quota(reservation if isinstance(reservation, dict) else None)
+            self._release_running_task(key)
             self._update_task(
                 key,
                 status=TASK_STATUS_ERROR,
@@ -307,12 +319,14 @@ class ImageTaskService:
                 raise RuntimeError(message)
             reservation = self._tasks.get(key, {}).get("quota_reservation")
             auth_service.commit_image_quota(reservation if isinstance(reservation, dict) else None)
+            self._release_running_task(key)
             self._update_task(key, status=TASK_STATUS_SUCCESS, data=data, error="", quota_reservation=None)
             if call is not None:
                 call.log("调用完成", result)
         except Exception as exc:
             reservation = self._tasks.get(key, {}).get("quota_reservation")
             auth_service.refund_image_quota(reservation if isinstance(reservation, dict) else None)
+            self._release_running_task(key)
             self._update_task(
                 key,
                 status=TASK_STATUS_ERROR,
@@ -331,6 +345,11 @@ class ImageTaskService:
             task.update(updates)
             task["updated_at"] = _now_iso()
             self._save_locked()
+
+    def _release_running_task(self, key: str) -> None:
+        with self._lock:
+            reservation = self._running_task_reservations.pop(key, None)
+        auth_service.release_running_task(reservation)
 
     def _load_locked(self) -> dict[str, dict[str, Any]]:
         if not self.path.exists():

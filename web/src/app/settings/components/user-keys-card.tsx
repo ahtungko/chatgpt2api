@@ -40,7 +40,7 @@ function quotaValueToInput(value?: number | null) {
   return value == null ? "" : String(value);
 }
 
-function parseQuotaInput(value: string, errorMessage: string) {
+function parseLimitInput(value: string, errorMessage: string) {
   const text = value.trim();
   if (!text) {
     return null;
@@ -66,6 +66,7 @@ export function UserKeysCard() {
   const [createName, setCreateName] = useState("");
   const [createGenerateQuota, setCreateGenerateQuota] = useState("");
   const [createEditQuota, setCreateEditQuota] = useState("");
+  const [createMaxRunningTasks, setCreateMaxRunningTasks] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [pendingIds, setPendingIds] = useState<Set<string>>(() => new Set());
   const [revealedKey, setRevealedKey] = useState("");
@@ -74,6 +75,7 @@ export function UserKeysCard() {
   const [editingName, setEditingName] = useState("");
   const [editingGenerateQuota, setEditingGenerateQuota] = useState("");
   const [editingEditQuota, setEditingEditQuota] = useState("");
+  const [editingMaxRunningTasks, setEditingMaxRunningTasks] = useState("");
   const [isSavingEdit, setIsSavingEdit] = useState(false);
 
   const load = useCallback(async () => {
@@ -100,14 +102,16 @@ export function UserKeysCard() {
     setCreateName("");
     setCreateGenerateQuota("");
     setCreateEditQuota("");
+    setCreateMaxRunningTasks("");
   };
 
   const handleCreate = async () => {
     setIsCreating(true);
     try {
       const data = await createUserKey(createName.trim(), {
-        generate_remaining: parseQuotaInput(createGenerateQuota, t("文生图额度必须是大于等于 0 的整数", "Generate quota must be an integer greater than or equal to 0")),
-        edit_remaining: parseQuotaInput(createEditQuota, t("图生图额度必须是大于等于 0 的整数", "Edit quota must be an integer greater than or equal to 0")),
+        generate_remaining: parseLimitInput(createGenerateQuota, t("Generate quota must be an integer greater than or equal to 0", "Generate quota must be an integer greater than or equal to 0")),
+        edit_remaining: parseLimitInput(createEditQuota, t("Edit quota must be an integer greater than or equal to 0", "Edit quota must be an integer greater than or equal to 0")),
+        max_running_tasks: parseLimitInput(createMaxRunningTasks, t("Maximum running tasks must be an integer greater than or equal to 0", "Maximum running tasks must be an integer greater than or equal to 0")),
       });
       setItems(data.items);
       setRevealedKey(data.key);
@@ -151,6 +155,7 @@ export function UserKeysCard() {
     setEditingName(item.name);
     setEditingGenerateQuota(quotaValueToInput(item.generate_remaining));
     setEditingEditQuota(quotaValueToInput(item.edit_remaining));
+    setEditingMaxRunningTasks(quotaValueToInput(item.max_running_tasks));
   };
 
   const handleSaveEdit = async () => {
@@ -161,8 +166,9 @@ export function UserKeysCard() {
     try {
       const data = await updateUserKey(editingItem.id, {
         name: editingName.trim(),
-        generate_remaining: parseQuotaInput(editingGenerateQuota, t("文生图额度必须是大于等于 0 的整数", "Generate quota must be an integer greater than or equal to 0")),
-        edit_remaining: parseQuotaInput(editingEditQuota, t("图生图额度必须是大于等于 0 的整数", "Edit quota must be an integer greater than or equal to 0")),
+        generate_remaining: parseLimitInput(editingGenerateQuota, t("Generate quota must be an integer greater than or equal to 0", "Generate quota must be an integer greater than or equal to 0")),
+        edit_remaining: parseLimitInput(editingEditQuota, t("Edit quota must be an integer greater than or equal to 0", "Edit quota must be an integer greater than or equal to 0")),
+        max_running_tasks: parseLimitInput(editingMaxRunningTasks, t("Maximum running tasks must be an integer greater than or equal to 0", "Maximum running tasks must be an integer greater than or equal to 0")),
       });
       setItems(data.items);
       setEditingItem(null);
@@ -261,7 +267,11 @@ export function UserKeysCard() {
                             {item.enabled ? t("已启用", "Enabled") : t("已禁用", "Disabled")}
                           </Badge>
                         </div>
-                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                          <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
+                            <div className="text-stone-400">{t("Max running tasks", "Max running tasks")}</div>
+                            <div className="mt-1 text-sm font-semibold text-stone-800">{formatQuotaValue(item.max_running_tasks, t)}</div>
+                          </div>
                           <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
                             <div className="text-stone-400">{t("文生图剩余额度", "Generate quota left")}</div>
                             <div className="mt-1 text-sm font-semibold text-stone-800">{formatQuotaValue(item.generate_remaining, t)}</div>
@@ -294,7 +304,7 @@ export function UserKeysCard() {
                           disabled={isPending}
                         >
                           <Settings2 className="size-4" />
-                          {t("编辑额度", "Edit quota")}
+                          {t("编辑额度", "Edit limits")}
                         </Button>
                         <Button
                           type="button"
@@ -350,7 +360,7 @@ export function UserKeysCard() {
                 className="h-11 rounded-xl border-stone-200 bg-white"
               />
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-stone-700">{t("文生图额度", "Generate quota")}</label>
                 <Input
@@ -372,6 +382,18 @@ export function UserKeysCard() {
                   value={createEditQuota}
                   onChange={(event) => setCreateEditQuota(event.target.value)}
                   placeholder={t("留空表示不限量", "Leave blank for unlimited")}
+                  className="h-11 rounded-xl border-stone-200 bg-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-stone-700">{t("Max running tasks", "Max running tasks")}</label>
+                <Input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={createMaxRunningTasks}
+                  onChange={(event) => setCreateMaxRunningTasks(event.target.value)}
+                  placeholder={t("Leave blank for unlimited", "Leave blank for unlimited")}
                   className="h-11 rounded-xl border-stone-200 bg-white"
                 />
               </div>
@@ -420,7 +442,7 @@ export function UserKeysCard() {
                 className="h-11 rounded-xl border-stone-200 bg-white"
               />
             </div>
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-stone-700">{t("文生图剩余额度", "Generate quota left")}</label>
                 <Input
@@ -442,6 +464,18 @@ export function UserKeysCard() {
                   value={editingEditQuota}
                   onChange={(event) => setEditingEditQuota(event.target.value)}
                   placeholder={t("留空表示不限量", "Leave blank for unlimited")}
+                  className="h-11 rounded-xl border-stone-200 bg-white"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-stone-700">{t("Max running tasks", "Max running tasks")}</label>
+                <Input
+                  type="number"
+                  min="0"
+                  inputMode="numeric"
+                  value={editingMaxRunningTasks}
+                  onChange={(event) => setEditingMaxRunningTasks(event.target.value)}
+                  placeholder={t("Leave blank for unlimited", "Leave blank for unlimited")}
                   className="h-11 rounded-xl border-stone-200 bg-white"
                 />
               </div>

@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field
 
 from api.support import require_identity, resolve_image_base_url
-from services.auth_service import UserKeyQuotaExceededError, auth_service
+from services.auth_service import UserKeyQuotaExceededError, UserKeyTaskLimitExceededError, auth_service
 from services.log_service import LoggedCall
 from services.protocol import (
     anthropic_v1_messages,
@@ -63,12 +63,22 @@ async def _run_image_call_with_quota(
     payload: dict[str, object],
 ):
     try:
+        task_reservation = auth_service.reserve_running_task(identity)
+    except UserKeyTaskLimitExceededError as exc:
+        raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
+    try:
         reservation = auth_service.reserve_image_quota(identity, quota_type, amount)
     except UserKeyQuotaExceededError as exc:
+        auth_service.release_running_task(task_reservation)
         raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
     settled = False
     try:
-        result = await call.run(handler, payload)
+        result = await call.run(
+            handler,
+            payload,
+            task_reservation=task_reservation,
+            task_finish=auth_service.release_running_task,
+        )
         if isinstance(result, dict):
             auth_service.commit_image_quota(reservation)
         else:
@@ -78,6 +88,7 @@ async def _run_image_call_with_quota(
     finally:
         if not settled:
             auth_service.refund_image_quota(reservation)
+            auth_service.release_running_task(task_reservation)
 
 
 def create_router() -> APIRouter:
@@ -87,7 +98,15 @@ def create_router() -> APIRouter:
     async def list_models(authorization: str | None = Header(default=None)):
         identity = require_identity(authorization)
         call = LoggedCall(identity, "/v1/models", "models", "模型列表")
-        return await call.run(openai_v1_models.list_models)
+        try:
+            task_reservation = auth_service.reserve_running_task(identity)
+        except UserKeyTaskLimitExceededError as exc:
+            raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
+        return await call.run(
+            openai_v1_models.list_models,
+            task_reservation=task_reservation,
+            task_finish=auth_service.release_running_task,
+        )
 
     @router.post("/v1/images/generations")
     async def generate_images(
@@ -159,7 +178,16 @@ def create_router() -> APIRouter:
         payload = body.model_dump(mode="python")
         model = str(payload.get("model") or "auto")
         call = LoggedCall(identity, "/v1/chat/completions", model, "文本生成")
-        return await call.run(openai_v1_chat_complete.handle, payload)
+        try:
+            task_reservation = auth_service.reserve_running_task(identity)
+        except UserKeyTaskLimitExceededError as exc:
+            raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
+        return await call.run(
+            openai_v1_chat_complete.handle,
+            payload,
+            task_reservation=task_reservation,
+            task_finish=auth_service.release_running_task,
+        )
 
     @router.post("/v1/responses")
     async def create_response(body: ResponseCreateRequest, authorization: str | None = Header(default=None)):
@@ -167,7 +195,16 @@ def create_router() -> APIRouter:
         payload = body.model_dump(mode="python")
         model = str(payload.get("model") or "auto")
         call = LoggedCall(identity, "/v1/responses", model, "Responses")
-        return await call.run(openai_v1_response.handle, payload)
+        try:
+            task_reservation = auth_service.reserve_running_task(identity)
+        except UserKeyTaskLimitExceededError as exc:
+            raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
+        return await call.run(
+            openai_v1_response.handle,
+            payload,
+            task_reservation=task_reservation,
+            task_finish=auth_service.release_running_task,
+        )
 
     @router.post("/v1/messages")
     async def create_message(
@@ -180,6 +217,16 @@ def create_router() -> APIRouter:
         payload = body.model_dump(mode="python")
         model = str(payload.get("model") or "auto")
         call = LoggedCall(identity, "/v1/messages", model, "Messages")
-        return await call.run(anthropic_v1_messages.handle, payload, sse="anthropic")
+        try:
+            task_reservation = auth_service.reserve_running_task(identity)
+        except UserKeyTaskLimitExceededError as exc:
+            raise HTTPException(status_code=429, detail={"error": str(exc)}) from exc
+        return await call.run(
+            anthropic_v1_messages.handle,
+            payload,
+            sse="anthropic",
+            task_reservation=task_reservation,
+            task_finish=auth_service.release_running_task,
+        )
 
     return router
