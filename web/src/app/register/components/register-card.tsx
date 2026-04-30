@@ -54,6 +54,7 @@ export function RegisterCard() {
       ...(type === "moemail" ? { api_base: "", api_key: "", domain: [] } : {}),
       ...(type === "duckmail" ? { api_key: "", default_domain: "duckmail.sbs" } : {}),
       ...(type === "gptmail" ? { api_key: "", default_domain: "" } : {}),
+      ...(type === "yyds_mail" ? { api_base: "https://maliapi.215.im/v1", api_key: "", domain: [], subdomain: "", wildcard: false } : {}),
     });
   };
 
@@ -171,10 +172,11 @@ export function RegisterCard() {
                             <SelectItem value="moemail">moemail</SelectItem>
                             <SelectItem value="duckmail">duckmail</SelectItem>
                             <SelectItem value="gptmail">{t("gptmail(未测试)", "gptmail (untested)")}</SelectItem>
+                            <SelectItem value="yyds_mail">yyds_mail</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
-                      {type === "cloudflare_temp_email" || type === "moemail" ? (
+                      {type === "cloudflare_temp_email" || type === "moemail" || type === "yyds_mail" ? (
                         <>
                           <div className="space-y-2">
                             <label className="text-sm text-stone-700">API Base</label>
@@ -188,7 +190,7 @@ export function RegisterCard() {
                           ) : null}
                         </>
                       ) : null}
-                      {type === "tempmail_lol" || type === "moemail" || type === "duckmail" || type === "gptmail" ? (
+                      {type === "tempmail_lol" || type === "moemail" || type === "duckmail" || type === "gptmail" || type === "yyds_mail" ? (
                         <div className="space-y-2">
                           <label className="text-sm text-stone-700">API Key</label>
                           <Input value={String(provider.api_key || "")} onChange={(event) => updateProvider(index, { api_key: event.target.value })} className="h-10 rounded-xl border-stone-200 bg-white" disabled={config.enabled} />
@@ -200,9 +202,21 @@ export function RegisterCard() {
                           <Input value={String(provider.default_domain || "")} onChange={(event) => updateProvider(index, { default_domain: event.target.value })} placeholder={type === "duckmail" ? "duckmail.sbs" : ""} className="h-10 rounded-xl border-stone-200 bg-white" disabled={config.enabled} />
                         </div>
                       ) : null}
+                      {type === "yyds_mail" ? (
+                        <>
+                          <div className="space-y-2">
+                            <label className="text-sm text-stone-700">Subdomain</label>
+                            <Input value={String(provider.subdomain || "")} onChange={(event) => updateProvider(index, { subdomain: event.target.value })} className="h-10 rounded-xl border-stone-200 bg-white" disabled={config.enabled} />
+                          </div>
+                          <label className="flex items-center gap-3 pt-8 text-sm text-stone-700">
+                            <Checkbox checked={Boolean(provider.wildcard)} onCheckedChange={(checked) => updateProvider(index, { wildcard: Boolean(checked) })} disabled={config.enabled} />
+                            Wildcard
+                          </label>
+                        </>
+                      ) : null}
                     </div>
 
-                    {type === "tempmail_lol" || type === "cloudflare_temp_email" || type === "moemail" ? (
+                    {type === "tempmail_lol" || type === "cloudflare_temp_email" || type === "moemail" || type === "yyds_mail" ? (
                       <div className="space-y-2">
                         <label className="text-sm text-stone-700">Domain</label>
                         <Textarea
@@ -289,6 +303,7 @@ export function RegisterCard() {
               <div>
                 <h3 className="text-sm font-semibold text-stone-900">{t("实时日志", "Live logs")}</h3>
                 <p className="mt-1 text-xs text-stone-500">{t("只保留内存中的最近 300 条。", "Only the latest 300 in-memory entries are kept.")}</p>
+                <p className="mt-1 text-xs text-amber-700">{t("遇到 HTTP 状态码 400 等错误，基本是邮箱滥用被封，需要更换新的域名邮箱。", "If HTTP 400 or similar errors appear, the email domain is likely blocked for abuse. Switch to a new domain mailbox.")}</p>
               </div>
               <Badge variant="secondary" className="rounded-md">
                 {logs.length}
