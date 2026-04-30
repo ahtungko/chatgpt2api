@@ -38,6 +38,9 @@ def create_router(app_version: str) -> APIRouter:
             "role": identity.get("role"),
             "subject_id": identity.get("id"),
             "name": identity.get("name"),
+            "generate_remaining": identity.get("generate_remaining"),
+            "edit_remaining": identity.get("edit_remaining"),
+            "max_running_tasks": identity.get("max_running_tasks"),
         }
 
     @router.get("/version")

@@ -124,6 +124,9 @@ export type LoginResponse = {
   role: AuthRole;
   subject_id: string;
   name: string;
+  generate_remaining?: number | null;
+  edit_remaining?: number | null;
+  max_running_tasks?: number | null;
 };
 
 export type UserKey = {
