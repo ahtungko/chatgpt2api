@@ -53,7 +53,7 @@ function parseLimitInput(value: string, errorMessage: string) {
 }
 
 function formatQuotaValue(value: number | null | undefined, t: (zh: string, en: string) => string) {
-  return value == null ? t("??", "Unlimited") : String(value);
+  return value == null ? t("无限", "Unlimited") : String(value);
 }
 
 export function UserKeysCard() {
@@ -85,7 +85,7 @@ export function UserKeysCard() {
       const data = await fetchUserKeys();
       setItems(data.items);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("????????", "Failed to load user keys"));
+      toast.error(error instanceof Error ? error.message : t("加载用户密钥失败", "Failed to load user keys"));
     } finally {
       setIsLoading(false);
     }
@@ -119,17 +119,17 @@ export function UserKeysCard() {
     setIsCreating(true);
     try {
       const data = await createUserKey(createName.trim(), {
-        generate_remaining: parseLimitInput(createGenerateQuota, t("???????????? 0 ???", "Generate quota must be an integer greater than or equal to 0")),
-        edit_remaining: parseLimitInput(createEditQuota, t("???????????? 0 ???", "Edit quota must be an integer greater than or equal to 0")),
-        max_running_tasks: parseLimitInput(createMaxRunningTasks, t("?????????????? 0 ???", "Maximum running tasks must be an integer greater than or equal to 0")),
+        generate_remaining: parseLimitInput(createGenerateQuota, t("文生图额度必须是大于等于 0 的整数", "Generate quota must be an integer greater than or equal to 0")),
+        edit_remaining: parseLimitInput(createEditQuota, t("图生图额度必须是大于等于 0 的整数", "Edit quota must be an integer greater than or equal to 0")),
+        max_running_tasks: parseLimitInput(createMaxRunningTasks, t("最大并发任务数必须是大于等于 0 的整数", "Maximum running tasks must be an integer greater than or equal to 0")),
       });
       setItems(data.items);
       setRevealedKey(data.key);
       resetCreateForm();
       setIsDialogOpen(false);
-      toast.success(t("???????", "User key created"));
+      toast.success(t("用户密钥已创建", "User key created"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("????????", "Failed to create user key"));
+      toast.error(error instanceof Error ? error.message : t("创建用户密钥失败", "Failed to create user key"));
     } finally {
       setIsCreating(false);
     }
@@ -152,9 +152,9 @@ export function UserKeysCard() {
     try {
       const data = await updateUserKey(item.id, { enabled: !item.enabled });
       setItems(data.items);
-      toast.success(item.enabled ? t("???????", "User key disabled") : t("???????", "User key enabled"));
+      toast.success(item.enabled ? t("用户密钥已禁用", "User key disabled") : t("用户密钥已启用", "User key enabled"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("????????", "Failed to update user key"));
+      toast.error(error instanceof Error ? error.message : t("更新用户密钥失败", "Failed to update user key"));
     } finally {
       setItemPending(item.id, false);
     }
@@ -178,15 +178,15 @@ export function UserKeysCard() {
       const data = await updateUserKey(editingItem.id, {
         name: editingName.trim(),
         key: editingKey.trim() || undefined,
-        generate_remaining: parseLimitInput(editingGenerateQuota, t("???????????? 0 ???", "Generate quota must be an integer greater than or equal to 0")),
-        edit_remaining: parseLimitInput(editingEditQuota, t("???????????? 0 ???", "Edit quota must be an integer greater than or equal to 0")),
-        max_running_tasks: parseLimitInput(editingMaxRunningTasks, t("?????????????? 0 ???", "Maximum running tasks must be an integer greater than or equal to 0")),
+        generate_remaining: parseLimitInput(editingGenerateQuota, t("文生图额度必须是大于等于 0 的整数", "Generate quota must be an integer greater than or equal to 0")),
+        edit_remaining: parseLimitInput(editingEditQuota, t("图生图额度必须是大于等于 0 的整数", "Edit quota must be an integer greater than or equal to 0")),
+        max_running_tasks: parseLimitInput(editingMaxRunningTasks, t("最大并发任务数必须是大于等于 0 的整数", "Maximum running tasks must be an integer greater than or equal to 0")),
       });
       setItems(data.items);
       resetEditDialog();
-      toast.success(editingKey.trim() ? t("???????", "User key updated") : t("?????????", "User key limits updated"));
+      toast.success(editingKey.trim() ? t("用户密钥已更新", "User key updated") : t("用户密钥额度已更新", "User key limits updated"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("????????", "Failed to update user key"));
+      toast.error(error instanceof Error ? error.message : t("更新用户密钥失败", "Failed to update user key"));
     } finally {
       setIsSavingEdit(false);
     }
@@ -202,9 +202,9 @@ export function UserKeysCard() {
       const data = await deleteUserKey(item.id);
       setItems(data.items);
       setDeletingItem(null);
-      toast.success(t("???????", "User key deleted"));
+      toast.success(t("用户密钥已删除", "User key deleted"));
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("????????", "Failed to delete user key"));
+      toast.error(error instanceof Error ? error.message : t("删除用户密钥失败", "Failed to delete user key"));
     } finally {
       setItemPending(item.id, false);
     }
@@ -213,9 +213,9 @@ export function UserKeysCard() {
   const handleCopy = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      toast.success(t("???????", "Copied to clipboard"));
+      toast.success(t("已复制到剪贴板", "Copied to clipboard"));
     } catch {
-      toast.error(t("??????????", "Copy failed, please copy it manually"));
+      toast.error(t("复制失败，请手动复制", "Copy failed, please copy it manually"));
     }
   };
 
@@ -229,19 +229,19 @@ export function UserKeysCard() {
                 <KeyRound className="size-5 text-stone-600" />
               </div>
               <div>
-                <h2 className="text-lg font-semibold tracking-tight">{t("??????", "User keys")}</h2>
-                <p className="text-sm text-stone-500">{t("??????????????????????????????????", "Create dedicated keys for regular users. Regular users can only access the image page and cannot open settings or accounts.")}</p>
+                <h2 className="text-lg font-semibold tracking-tight">{t("用户密钥管理", "User keys")}</h2>
+                <p className="text-sm text-stone-500">{t("为普通用户创建专用密钥；普通用户只能进入画图页，不能查看设置和号池。", "Create dedicated keys for regular users. Regular users can only access the image page and cannot open settings or accounts.")}</p>
               </div>
             </div>
             <Button className="h-9 rounded-xl bg-stone-950 px-4 text-white hover:bg-stone-800" onClick={() => setIsDialogOpen(true)}>
               <Plus className="size-4" />
-              {t("??????", "Create user key")}
+              {t("创建用户密钥", "Create user key")}
             </Button>
           </div>
 
           {revealedKey ? (
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-900">
-              <div className="font-medium">{t("???????????????", "This new key is shown only once. Save it now:")}</div>
+              <div className="font-medium">{t("新密钥仅展示一次，请立即保存：", "This new key is shown only once. Save it now:")}</div>
               <div className="mt-3 flex flex-col gap-3 rounded-lg border border-emerald-200 bg-white/80 p-3 md:flex-row md:items-center md:justify-between">
                 <code className="break-all font-mono text-[13px]">{revealedKey}</code>
                 <Button
@@ -251,7 +251,7 @@ export function UserKeysCard() {
                   onClick={() => void handleCopy(revealedKey)}
                 >
                   <Copy className="size-4" />
-                  {t("??", "Copy")}
+                  {t("复制", "Copy")}
                 </Button>
               </div>
             </div>
@@ -263,7 +263,7 @@ export function UserKeysCard() {
             </div>
           ) : items.length === 0 ? (
             <div className="rounded-xl bg-stone-50 px-6 py-10 text-center text-sm text-stone-500">
-              {t("?????????????????????????????", "No user keys yet. Click the button in the top-right corner to create one and share it.")}
+              {t("暂无普通用户密钥。点击右上角按钮后即可创建并分发给其他人。", "No user keys yet. Click the button in the top-right corner to create one and share it.")}
             </div>
           ) : (
             <div className="space-y-3">
@@ -276,34 +276,34 @@ export function UserKeysCard() {
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="truncate text-sm font-medium text-stone-800">{item.name}</div>
                           <Badge variant={item.enabled ? "success" : "secondary"} className="rounded-md">
-                            {item.enabled ? t("???", "Enabled") : t("???", "Disabled")}
+                            {item.enabled ? t("已启用", "Enabled") : t("已禁用", "Disabled")}
                           </Badge>
                         </div>
                         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
                           <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
-                            <div className="text-stone-400">{t("???????", "Max running tasks")}</div>
+                            <div className="text-stone-400">{t("最大并发任务数", "Max running tasks")}</div>
                             <div className="mt-1 text-sm font-semibold text-stone-800">{formatQuotaValue(item.max_running_tasks, t)}</div>
                           </div>
                           <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
-                            <div className="text-stone-400">{t("???????", "Generate quota left")}</div>
+                            <div className="text-stone-400">{t("文生图剩余额度", "Generate quota left")}</div>
                             <div className="mt-1 text-sm font-semibold text-stone-800">{formatQuotaValue(item.generate_remaining, t)}</div>
                           </div>
                           <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
-                            <div className="text-stone-400">{t("???????", "Edit quota left")}</div>
+                            <div className="text-stone-400">{t("图生图剩余额度", "Edit quota left")}</div>
                             <div className="mt-1 text-sm font-semibold text-stone-800">{formatQuotaValue(item.edit_remaining, t)}</div>
                           </div>
                           <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
-                            <div className="text-stone-400">{t("??????", "Generate used")}</div>
+                            <div className="text-stone-400">{t("文生图已使用", "Generate used")}</div>
                             <div className="mt-1 text-sm font-semibold text-stone-800">{item.generate_used}</div>
                           </div>
                           <div className="rounded-lg bg-stone-50 px-3 py-2 text-xs text-stone-600">
-                            <div className="text-stone-400">{t("??????", "Edit used")}</div>
+                            <div className="text-stone-400">{t("图生图已使用", "Edit used")}</div>
                             <div className="mt-1 text-sm font-semibold text-stone-800">{item.edit_used}</div>
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-stone-500">
-                          <span>{t("????", "Created")} {formatDateTime(item.created_at, isEnglish)}</span>
-                          <span>{t("????", "Last used")} {formatDateTime(item.last_used_at, isEnglish)}</span>
+                          <span>{t("创建时间", "Created")} {formatDateTime(item.created_at, isEnglish)}</span>
+                          <span>{t("最近使用", "Last used")} {formatDateTime(item.last_used_at, isEnglish)}</span>
                         </div>
                       </div>
 
@@ -316,7 +316,7 @@ export function UserKeysCard() {
                           disabled={isPending}
                         >
                           <Settings2 className="size-4" />
-                          {t("???????", "Edit key & limits")}
+                          {t("编辑密钥与额度", "Edit key & limits")}
                         </Button>
                         <Button
                           type="button"
@@ -332,7 +332,7 @@ export function UserKeysCard() {
                           ) : (
                             <CheckCircle2 className="size-4" />
                           )}
-                          {item.enabled ? t("??", "Disable") : t("??", "Enable")}
+                          {item.enabled ? t("禁用", "Disable") : t("启用", "Enable")}
                         </Button>
                         <Button
                           type="button"
@@ -342,7 +342,7 @@ export function UserKeysCard() {
                           disabled={isPending}
                         >
                           {isPending ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-                          {t("??", "Delete")}
+                          {t("删除", "Delete")}
                         </Button>
                       </div>
                     </div>
@@ -357,55 +357,55 @@ export function UserKeysCard() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="rounded-2xl p-6">
           <DialogHeader className="gap-2">
-            <DialogTitle>{t("??????", "Create user key")}</DialogTitle>
+            <DialogTitle>{t("创建用户密钥", "Create user key")}</DialogTitle>
             <DialogDescription className="text-sm leading-6">
-              {t("????????????????/????????????????????????????????????????", "You can optionally add a note and set separate generate/edit quotas. Leave a quota blank for unlimited use. After creation, the raw key will only be shown once.")}
+              {t("可选填写一个备注名称，并为文生图/图生图设置独立额度；额度留空表示不限量。创建后会生成一条只能查看一次的原始密钥。", "You can optionally add a note and set separate generate/edit quotas. Leave a quota blank for unlimited use. After creation, the raw key will only be shown once.")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-stone-700">{t("??????", "Name (optional)")}</label>
+              <label className="text-sm font-medium text-stone-700">{t("名称（可选）", "Name (optional)")}</label>
               <Input
                 value={createName}
                 onChange={(event) => setCreateName(event.target.value)}
-                placeholder={t("??????? A???????", "For example: Designer A, temp ops account")}
+                placeholder={t("例如：设计同学 A、运营临时账号", "For example: Designer A, temp ops account")}
                 className="h-11 rounded-xl border-stone-200 bg-white"
               />
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-stone-700">{t("?????", "Generate quota")}</label>
+                <label className="text-sm font-medium text-stone-700">{t("文生图额度", "Generate quota")}</label>
                 <Input
                   type="number"
                   min="0"
                   inputMode="numeric"
                   value={createGenerateQuota}
                   onChange={(event) => setCreateGenerateQuota(event.target.value)}
-                  placeholder={t("???????", "Leave blank for unlimited")}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
                   className="h-11 rounded-xl border-stone-200 bg-white"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-stone-700">{t("?????", "Edit quota")}</label>
+                <label className="text-sm font-medium text-stone-700">{t("图生图额度", "Edit quota")}</label>
                 <Input
                   type="number"
                   min="0"
                   inputMode="numeric"
                   value={createEditQuota}
                   onChange={(event) => setCreateEditQuota(event.target.value)}
-                  placeholder={t("???????", "Leave blank for unlimited")}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
                   className="h-11 rounded-xl border-stone-200 bg-white"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-stone-700">{t("???????", "Max running tasks")}</label>
+                <label className="text-sm font-medium text-stone-700">{t("最大并发任务数", "Max running tasks")}</label>
                 <Input
                   type="number"
                   min="0"
                   inputMode="numeric"
                   value={createMaxRunningTasks}
                   onChange={(event) => setCreateMaxRunningTasks(event.target.value)}
-                  placeholder={t("???????", "Leave blank for unlimited")}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
                   className="h-11 rounded-xl border-stone-200 bg-white"
                 />
               </div>
@@ -422,7 +422,7 @@ export function UserKeysCard() {
               }}
               disabled={isCreating}
             >
-              {t("??", "Cancel")}
+              {t("取消", "Cancel")}
             </Button>
             <Button
               type="button"
@@ -431,7 +431,7 @@ export function UserKeysCard() {
               disabled={isCreating}
             >
               {isCreating ? <LoaderCircle className="size-4 animate-spin" /> : <Plus className="size-4" />}
-              {t("??", "Create")}
+              {t("创建", "Create")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -440,23 +440,23 @@ export function UserKeysCard() {
       <Dialog open={Boolean(editingItem)} onOpenChange={(open) => (!open ? resetEditDialog() : null)}>
         <DialogContent className="rounded-2xl p-6">
           <DialogHeader className="gap-2">
-            <DialogTitle>{t("??????", "Edit user key")}</DialogTitle>
+            <DialogTitle>{t("编辑用户密钥", "Edit user key")}</DialogTitle>
             <DialogDescription className="text-sm leading-6">
-              {t("????????????????????????/??????????????????", "You can update the note, replace the dedicated key, and adjust generate/edit remaining quota separately. Leave a quota blank for unlimited use.")}
+              {t("可以修改备注名称、替换专用密钥，并单独调整文生图/图生图剩余额度；额度留空表示不限量。", "You can update the note, replace the dedicated key, and adjust generate/edit remaining quota separately. Leave a quota blank for unlimited use.")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium text-stone-700">{t("??", "Name")}</label>
+              <label className="text-sm font-medium text-stone-700">{t("名称", "Name")}</label>
               <Input
                 value={editingName}
                 onChange={(event) => setEditingName(event.target.value)}
-                placeholder={t("??????? A???????", "For example: Designer A, temp ops account")}
+                placeholder={t("例如：设计同学 A、运营临时账号", "For example: Designer A, temp ops account")}
                 className="h-11 rounded-xl border-stone-200 bg-white"
               />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-stone-700">{t("??????????", "New dedicated key (optional)")}</label>
+              <label className="text-sm font-medium text-stone-700">{t("新的专用密钥（可选）", "New dedicated key (optional)")}</label>
               <Input
                 value={editingKey}
                 onChange={(event) => setEditingKey(event.target.value)}
@@ -464,51 +464,51 @@ export function UserKeysCard() {
                 className="h-11 rounded-xl border-stone-200 bg-white font-mono"
               />
               <p className="text-xs leading-5 text-stone-500">
-                {t("????????????????????????????????????", "After saving, the old key becomes invalid immediately and the new key takes effect. The system still stores only the hash and never reveals the current key.")}
+                {t("保存后旧密钥会立即失效，新密钥生效。系统仍只保存哈希，不会回显当前密钥。", "After saving, the old key becomes invalid immediately and the new key takes effect. The system still stores only the hash and never reveals the current key.")}
               </p>
             </div>
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-stone-700">{t("???????", "Generate quota left")}</label>
+                <label className="text-sm font-medium text-stone-700">{t("文生图剩余额度", "Generate quota left")}</label>
                 <Input
                   type="number"
                   min="0"
                   inputMode="numeric"
                   value={editingGenerateQuota}
                   onChange={(event) => setEditingGenerateQuota(event.target.value)}
-                  placeholder={t("???????", "Leave blank for unlimited")}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
                   className="h-11 rounded-xl border-stone-200 bg-white"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-stone-700">{t("???????", "Edit quota left")}</label>
+                <label className="text-sm font-medium text-stone-700">{t("图生图剩余额度", "Edit quota left")}</label>
                 <Input
                   type="number"
                   min="0"
                   inputMode="numeric"
                   value={editingEditQuota}
                   onChange={(event) => setEditingEditQuota(event.target.value)}
-                  placeholder={t("???????", "Leave blank for unlimited")}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
                   className="h-11 rounded-xl border-stone-200 bg-white"
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium text-stone-700">{t("???????", "Max running tasks")}</label>
+                <label className="text-sm font-medium text-stone-700">{t("最大并发任务数", "Max running tasks")}</label>
                 <Input
                   type="number"
                   min="0"
                   inputMode="numeric"
                   value={editingMaxRunningTasks}
                   onChange={(event) => setEditingMaxRunningTasks(event.target.value)}
-                  placeholder={t("???????", "Leave blank for unlimited")}
+                  placeholder={t("留空表示不限量", "Leave blank for unlimited")}
                   className="h-11 rounded-xl border-stone-200 bg-white"
                 />
               </div>
             </div>
             {editingItem ? (
               <div className="grid gap-3 rounded-xl border border-stone-200 bg-stone-50 p-3 text-xs text-stone-600 sm:grid-cols-2">
-                <div>{t("??????", "Generate used")}: <span className="font-semibold text-stone-800">{editingItem.generate_used}</span></div>
-                <div>{t("??????", "Edit used")}: <span className="font-semibold text-stone-800">{editingItem.edit_used}</span></div>
+                <div>{t("文生图已使用", "Generate used")}: <span className="font-semibold text-stone-800">{editingItem.generate_used}</span></div>
+                <div>{t("图生图已使用", "Edit used")}: <span className="font-semibold text-stone-800">{editingItem.edit_used}</span></div>
               </div>
             ) : null}
           </div>
@@ -520,7 +520,7 @@ export function UserKeysCard() {
               onClick={() => resetEditDialog()}
               disabled={isSavingEdit}
             >
-              {t("??", "Cancel")}
+              {t("取消", "Cancel")}
             </Button>
             <Button
               type="button"
@@ -529,7 +529,7 @@ export function UserKeysCard() {
               disabled={isSavingEdit}
             >
               {isSavingEdit ? <LoaderCircle className="size-4 animate-spin" /> : <Settings2 className="size-4" />}
-              {t("??", "Save")}
+              {t("保存", "Save")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -538,9 +538,9 @@ export function UserKeysCard() {
       <Dialog open={Boolean(deletingItem)} onOpenChange={(open) => (!open ? setDeletingItem(null) : null)}>
         <DialogContent className="rounded-2xl p-6">
           <DialogHeader className="gap-2">
-            <DialogTitle>{t("??????", "Delete user key")}</DialogTitle>
+            <DialogTitle>{t("删除用户密钥", "Delete user key")}</DialogTitle>
             <DialogDescription className="text-sm leading-6">
-              {t(`?????????${deletingItem?.name}???????????????????`, `Delete the user key "${deletingItem?.name}"? It will no longer be able to call the API.`)}
+              {t(`确认删除用户密钥「${deletingItem?.name}」吗？删除后该密钥将无法继续调用接口。`, `Delete the user key "${deletingItem?.name}"? It will no longer be able to call the API.`)}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -551,7 +551,7 @@ export function UserKeysCard() {
               onClick={() => setDeletingItem(null)}
               disabled={deletingItem ? pendingIds.has(deletingItem.id) : false}
             >
-              {t("??", "Cancel")}
+              {t("取消", "Cancel")}
             </Button>
             <Button
               type="button"
@@ -560,7 +560,7 @@ export function UserKeysCard() {
               disabled={deletingItem ? pendingIds.has(deletingItem.id) : false}
             >
               {deletingItem && pendingIds.has(deletingItem.id) ? <LoaderCircle className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-              {t("??", "Delete")}
+              {t("删除", "Delete")}
             </Button>
           </DialogFooter>
         </DialogContent>
