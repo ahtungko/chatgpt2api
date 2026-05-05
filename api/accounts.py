@@ -34,6 +34,7 @@ class UserKeyCreateRequest(BaseModel):
 class UserKeyUpdateRequest(BaseModel):
     name: str | None = None
     enabled: bool | None = None
+    key: str | None = None
     generate_remaining: int | None = Field(default=None, ge=0)
     edit_remaining: int | None = Field(default=None, ge=0)
     max_running_tasks: int | None = Field(default=None, ge=0)
@@ -107,13 +108,16 @@ def create_router() -> APIRouter:
     @router.post("/api/auth/users")
     async def create_user_key(body: UserKeyCreateRequest, authorization: str | None = Header(default=None)):
         require_admin(authorization)
-        item, raw_key = auth_service.create_key(
-            role="user",
-            name=body.name,
-            generate_remaining=body.generate_remaining,
-            edit_remaining=body.edit_remaining,
-            max_running_tasks=body.max_running_tasks,
-        )
+        try:
+            item, raw_key = auth_service.create_key(
+                role="user",
+                name=body.name,
+                generate_remaining=body.generate_remaining,
+                edit_remaining=body.edit_remaining,
+                max_running_tasks=body.max_running_tasks,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail={"error": str(exc)}) from exc
         return {"item": item, "key": raw_key, "items": auth_service.list_keys(role="user")}
 
     @router.post("/api/auth/users/{key_id}")
@@ -129,6 +133,8 @@ def create_router() -> APIRouter:
             updates["name"] = body.name
         if "enabled" in payload:
             updates["enabled"] = body.enabled
+        if "key" in payload:
+            updates["key"] = body.key
         if "generate_remaining" in payload:
             updates["generate_remaining"] = body.generate_remaining
         if "edit_remaining" in payload:

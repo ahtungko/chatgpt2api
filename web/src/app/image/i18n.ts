@@ -54,6 +54,11 @@ export type ImagePageMessages = {
     turn: (index: number) => string;
     editMode: string;
     generateMode: string;
+    reuseConfig: string;
+    deletePrompt: string;
+    deleteResults: string;
+    regenerateAll: string;
+    retryOne: string;
     referenceImages: string;
     previewReferenceImage: (label: string) => string;
     referenceImageAlt: (label: string) => string;
@@ -75,8 +80,12 @@ export type ImagePageMessages = {
   dialogs: {
     clearHistoryTitle: string;
     deleteConversationTitle: string;
+    deletePromptTitle: string;
+    deleteResultsTitle: string;
     clearHistoryDescription: string;
     deleteConversationDescription: string;
+    deletePromptDescription: string;
+    deleteResultsDescription: string;
   };
   historyButton: (count: number) => string;
   toasts: {
@@ -165,6 +174,11 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
       turn: (index) => `第 ${index} 轮`,
       editMode: "编辑图",
       generateMode: "文生图",
+      reuseConfig: "复用配置",
+      deletePrompt: "删除提示词记录",
+      deleteResults: "删除生成结果",
+      regenerateAll: "全部重新生成",
+      retryOne: "重新生成这一张",
       referenceImages: "本轮参考图",
       previewReferenceImage: (label) => `预览参考图 ${label}`,
       referenceImageAlt: (label) => `参考图 ${label}`,
@@ -186,8 +200,12 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
     dialogs: {
       clearHistoryTitle: "清空历史记录",
       deleteConversationTitle: "删除对话",
+      deletePromptTitle: "删除提示词记录",
+      deleteResultsTitle: "删除生成结果",
       clearHistoryDescription: "确认删除全部图片历史记录吗？删除后无法恢复。",
       deleteConversationDescription: "确认删除这条图片对话吗？删除后无法恢复。",
+      deletePromptDescription: "确认删除这条提示词记录吗？对应生成结果会保留。",
+      deleteResultsDescription: "确认删除这条生成结果吗？对应提示词记录会保留。",
     },
     historyButton: (count) => `历史记录 (${count})`,
     toasts: {
@@ -274,6 +292,11 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
       turn: (index) => `Turn ${index}`,
       editMode: "Image edit",
       generateMode: "Text to image",
+      reuseConfig: "Reuse config",
+      deletePrompt: "Delete prompt record",
+      deleteResults: "Delete generated results",
+      regenerateAll: "Regenerate all",
+      retryOne: "Retry this image",
       referenceImages: "Reference images",
       previewReferenceImage: (label) => `Preview reference image ${label}`,
       referenceImageAlt: (label) => `Reference image ${label}`,
@@ -295,8 +318,12 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
     dialogs: {
       clearHistoryTitle: "Clear history",
       deleteConversationTitle: "Delete conversation",
+      deletePromptTitle: "Delete prompt record",
+      deleteResultsTitle: "Delete generated results",
       clearHistoryDescription: "Delete all image history? This cannot be undone.",
       deleteConversationDescription: "Delete this image conversation? This cannot be undone.",
+      deletePromptDescription: "Delete this prompt record? The generated results will be kept.",
+      deleteResultsDescription: "Delete these generated results? The prompt record will be kept.",
     },
     historyButton: (count) => `History (${count})`,
     toasts: {

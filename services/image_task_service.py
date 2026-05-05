@@ -143,7 +143,7 @@ class ImageTaskService:
             "response_format": "url",
             "base_url": base_url,
         }
-        call = LoggedCall(identity, "/api/image-tasks/generations", model, "文生图")
+        call = LoggedCall(identity, "/api/image-tasks/generations", model, "文生图", request_text=prompt)
         return self._submit(identity, client_task_id=client_task_id, mode="generate", payload=payload, call=call)
 
     def submit_edit(
@@ -166,7 +166,7 @@ class ImageTaskService:
             "response_format": "url",
             "base_url": base_url,
         }
-        call = LoggedCall(identity, "/api/image-tasks/edits", model, "图生图")
+        call = LoggedCall(identity, "/api/image-tasks/edits", model, "图生图", request_text=prompt)
         return self._submit(identity, client_task_id=client_task_id, mode="edit", payload=payload, call=call)
 
     def list_tasks(self, identity: dict[str, object], task_ids: list[str]) -> dict[str, Any]:

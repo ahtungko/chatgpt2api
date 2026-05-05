@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-// import { Github } from "lucide-react";
+import { Github } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 
 import { LocaleSwitchButton } from "@/components/locale-switch-button";
 import webConfig from "@/constants/common-env";
 import { useAppLocale } from "@/i18n/locale";
+import { getValidatedAuthSession } from "@/lib/auth-session";
 import { cn } from "@/lib/utils";
-import { clearStoredAuthSession, getStoredAuthSession, type StoredAuthSession } from "@/store/auth";
+import { clearStoredAuthSession, type StoredAuthSession } from "@/store/auth";
 
 const adminNavItems = ["/image", "/accounts", "/register", "/tasks", "/image-manager", "/logs", "/settings"] as const;
 const userNavItems = ["/image"] as const;
@@ -32,7 +33,7 @@ export function TopNav() {
         return;
       }
 
-      const storedSession = await getStoredAuthSession();
+      const storedSession = await getValidatedAuthSession();
       if (!active) {
         return;
       }
@@ -55,18 +56,19 @@ export function TopNav() {
   }
 
   const navLabelMap: Record<(typeof adminNavItems)[number], string> = {
-    "/image": isEnglish ? "Images" : "画图",
-    "/accounts": isEnglish ? "Accounts" : "号池管理",
-    "/register": isEnglish ? "Register" : "注册机",
-    "/tasks": isEnglish ? "Tasks" : "任务",
-    "/image-manager": isEnglish ? "Image Manager" : "图片管理",
-    "/logs": isEnglish ? "Logs" : "日志管理",
-    "/settings": isEnglish ? "Settings" : "设置",
+    "/image": isEnglish ? "Images" : "??",
+    "/accounts": isEnglish ? "Accounts" : "????",
+    "/register": isEnglish ? "Register" : "???",
+    "/tasks": isEnglish ? "Tasks" : "??",
+    "/image-manager": isEnglish ? "Image Manager" : "????",
+    "/logs": isEnglish ? "Logs" : "????",
+    "/settings": isEnglish ? "Settings" : "??",
   };
 
   const navItems = session.role === "admin" ? adminNavItems : userNavItems;
-  const roleLabel = session.role === "admin" ? (isEnglish ? "Admin" : "管理员") : isEnglish ? "User" : "普通用户";
-  const logoutLabel = isEnglish ? "Log out" : "退出";
+  const roleLabel = session.role === "admin" ? (isEnglish ? "Admin" : "???") : isEnglish ? "User" : "????";
+  const displayName = session.name.trim() || roleLabel;
+  const logoutLabel = isEnglish ? "Log out" : "??";
 
   return (
     <header className="border-b border-stone-100/50">
@@ -78,16 +80,16 @@ export function TopNav() {
           >
             chatgpt2api
           </Link>
-          {/* <a
+          <a
             href="https://github.com/basketikun/chatgpt2api"
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1.5 py-1 text-sm text-stone-400 transition hover:text-stone-700"
+            className="hidden items-center gap-1.5 py-1 text-sm text-stone-400 transition hover:text-stone-700 md:inline-flex"
             aria-label="GitHub repository"
           >
             <Github className="size-4" />
-            <span className="hidden md:inline">GitHub</span>
-          </a> */}
+            <span>GitHub</span>
+          </a>
           <div className="ml-auto flex items-center gap-2 sm:hidden">
             <LocaleSwitchButton className="h-8 rounded-lg border-stone-200 bg-white/85 px-3 text-stone-700" />
             <button
@@ -124,7 +126,7 @@ export function TopNav() {
         <div className="hidden items-center justify-end gap-2 sm:flex sm:gap-3">
           <LocaleSwitchButton className="h-8 rounded-lg border-stone-200 bg-white/85 px-3 text-stone-700" />
           <span className="hidden rounded-md bg-stone-100 px-2 py-1 text-[10px] font-medium text-stone-500 sm:inline-block sm:text-[11px]">
-            {roleLabel}
+            {roleLabel} ? {displayName}
           </span>
           <span className="hidden rounded-md bg-stone-100 px-2 py-1 text-[10px] font-medium text-stone-500 sm:inline-block sm:text-[11px]">
             v{webConfig.appVersion}

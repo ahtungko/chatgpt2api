@@ -46,8 +46,8 @@ import {
   refreshAccounts,
   updateAccount,
   type Account,
-  type AccountStatus,
   type AccountType,
+  type AccountStatus,
 } from "@/lib/api";
 import { translate, useTranslate } from "@/i18n/locale";
 import { useAuthGuard } from "@/lib/use-auth-guard";
@@ -101,7 +101,11 @@ function getMetricCards() {
 }
 
 function isUnlimitedImageQuotaAccount(account: Account) {
-  return account.type === "Pro" || account.type === "ProLite";
+  return account.type === "pro" || account.type === "prolite";
+}
+
+function imageQuotaUnknown(account: Account) {
+  return Boolean(account.image_quota_unknown);
 }
 
 function formatCompact(value: number) {
@@ -115,7 +119,7 @@ function formatQuota(account: Account) {
   if (isUnlimitedImageQuotaAccount(account)) {
     return "∞";
   }
-  if (account.imageQuotaUnknown) {
+  if (imageQuotaUnknown(account)) {
     return translate("未知", "Unknown");
   }
   return String(Math.max(0, account.quota));
@@ -150,7 +154,7 @@ function formatQuotaSummary(accounts: Account[]) {
   if (availableAccounts.some(isUnlimitedImageQuotaAccount)) {
     return "∞";
   }
-  if (availableAccounts.some((account) => account.imageQuotaUnknown)) {
+  if (availableAccounts.some(imageQuotaUnknown)) {
     return translate("未知", "Unknown");
   }
   return formatCompact(availableAccounts.reduce((sum, account) => sum + Math.max(0, account.quota), 0));
@@ -173,18 +177,8 @@ function downloadTokens(accounts: Account[]) {
   URL.revokeObjectURL(url);
 }
 
-function normalizeAccounts(items: Account[]): Account[] {
-  return items.map((item) => ({
-    ...item,
-    type:
-      item.type === "Plus" ||
-      item.type === "ProLite" ||
-      item.type === "Team" ||
-      item.type === "Pro" ||
-      item.type === "Free"
-        ? item.type
-        : "Free",
-  }));
+function displayAccountType(account: Account) {
+  return account.type || "Free";
 }
 
 function AccountsPageContent() {
@@ -193,13 +187,13 @@ function AccountsPageContent() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState<AccountType | "all">("all");
+  const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<AccountStatus | "all">("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState("10");
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
-  const [editType, setEditType] = useState<AccountType>("Free");
   const [editStatus, setEditStatus] = useState<AccountStatus>("正常");
+  const [editType, setEditType] = useState<AccountType>("Free");
   const [editQuota, setEditQuota] = useState("0");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -215,8 +209,8 @@ function AccountsPageContent() {
     }
     try {
       const data = await fetchAccounts();
-      setAccounts(normalizeAccounts(data.items));
-      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.id === id)));
+      setAccounts(data.items);
+      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.access_token === id)));
     } catch (error) {
       const message = error instanceof Error ? error.message : t("加载账户失败", "Failed to load accounts");
       toast.error(message);
@@ -240,7 +234,7 @@ function AccountsPageContent() {
     return accounts.filter((account) => {
       const searchMatched =
         normalizedQuery.length === 0 || (account.email ?? "").toLowerCase().includes(normalizedQuery);
-      const typeMatched = typeFilter === "all" || account.type === typeFilter;
+      const typeMatched = typeFilter === "all" || displayAccountType(account) === typeFilter;
       const statusMatched = statusFilter === "all" || account.status === statusFilter;
       return searchMatched && typeMatched && statusMatched;
     });
@@ -251,7 +245,7 @@ function AccountsPageContent() {
   const startIndex = (safePage - 1) * Number(pageSize);
   const currentRows = filteredAccounts.slice(startIndex, startIndex + Number(pageSize));
   const allCurrentSelected =
-    currentRows.length > 0 && currentRows.every((row) => selectedIds.includes(row.id));
+    currentRows.length > 0 && currentRows.every((row) => selectedIds.includes(row.access_token));
 
   const summary = useMemo(() => {
     const total = accounts.length;
@@ -266,7 +260,7 @@ function AccountsPageContent() {
 
   const selectedTokens = useMemo(() => {
     const selectedSet = new Set(selectedIds);
-    return accounts.filter((item) => selectedSet.has(item.id)).map((item) => item.access_token);
+    return accounts.filter((item) => selectedSet.has(item.access_token)).map((item) => item.access_token);
   }, [accounts, selectedIds]);
 
   const abnormalTokens = useMemo(() => {
@@ -296,8 +290,8 @@ function AccountsPageContent() {
     setIsDeleting(true);
     try {
       const data = await deleteAccounts(tokens);
-      setAccounts(normalizeAccounts(data.items));
-      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.id === id)));
+      setAccounts(data.items);
+      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.access_token === id)));
       toast.success(t(`删除 ${data.removed ?? 0} 个账户`, `Deleted ${data.removed ?? 0} accounts`));
     } catch (error) {
       const message = error instanceof Error ? error.message : t("删除账户失败", "Failed to delete accounts");
@@ -316,8 +310,8 @@ function AccountsPageContent() {
     setIsRefreshing(true);
     try {
       const data = await refreshAccounts(accessTokens);
-      setAccounts(normalizeAccounts(data.items));
-      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.id === id)));
+      setAccounts(data.items);
+      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.access_token === id)));
       if (data.errors.length > 0) {
         const firstError = data.errors[0]?.error;
         toast.error(
@@ -339,9 +333,9 @@ function AccountsPageContent() {
 
   const openEditDialog = (account: Account) => {
     setEditingAccount(account);
-    setEditType(account.type);
     setEditStatus(account.status);
-    setEditQuota(String(account.quota));
+    setEditType(displayAccountType(account));
+    setEditQuota(String(Math.max(0, account.quota)));
   };
 
   const handleUpdateAccount = async () => {
@@ -354,10 +348,10 @@ function AccountsPageContent() {
       const data = await updateAccount(editingAccount.access_token, {
         type: editType,
         status: editStatus,
-        quota: Number(editQuota || 0),
+        quota: Math.max(0, Number(editQuota) || 0),
       });
-      setAccounts(normalizeAccounts(data.items));
-      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.id === id)));
+      setAccounts(data.items);
+      setSelectedIds((prev) => prev.filter((id) => data.items.some((item) => item.access_token === id)));
       setEditingAccount(null);
       toast.success(t("账号信息已更新", "Account updated"));
     } catch (error) {
@@ -370,10 +364,10 @@ function AccountsPageContent() {
 
   const toggleSelectAll = (checked: boolean) => {
     if (checked) {
-      setSelectedIds((prev) => Array.from(new Set([...prev, ...currentRows.map((item) => item.id)])));
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...currentRows.map((item) => item.access_token)])));
       return;
     }
-    setSelectedIds((prev) => prev.filter((id) => !currentRows.some((row) => row.id === id)));
+    setSelectedIds((prev) => prev.filter((id) => !currentRows.some((row) => row.access_token === id)));
   };
 
   return (
@@ -408,7 +402,7 @@ function AccountsPageContent() {
           <AccountImportDialog
             disabled={isLoading || isRefreshing || isDeleting}
             onImported={(items) => {
-              setAccounts(normalizeAccounts(items));
+              setAccounts(items);
               setSelectedIds([]);
               setPage(1);
             }}
@@ -547,7 +541,7 @@ function AccountsPageContent() {
             <Select
               value={typeFilter}
               onValueChange={(value) => {
-                setTypeFilter(value as AccountType | "all");
+                setTypeFilter(value);
                 setPage(1);
               }}
             >
@@ -669,17 +663,17 @@ function AccountsPageContent() {
 
                     return (
                       <tr
-                        key={account.id}
+                        key={account.access_token}
                         className="border-b border-stone-100/80 text-sm text-stone-600 transition-colors hover:bg-stone-50/70"
                       >
                         <td className="px-4 py-3">
                           <Checkbox
-                            checked={selectedIds.includes(account.id)}
+                            checked={selectedIds.includes(account.access_token)}
                             onCheckedChange={(checked) => {
                               setSelectedIds((prev) =>
                                 checked
-                                  ? Array.from(new Set([...prev, account.id]))
-                                  : prev.filter((item) => item !== account.id),
+                                  ? Array.from(new Set([...prev, account.access_token]))
+                                  : prev.filter((item) => item !== account.access_token),
                               );
                             }}
                           />
@@ -703,7 +697,7 @@ function AccountsPageContent() {
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant="secondary" className="rounded-md bg-stone-100 text-stone-700">
-                            {account.type}
+                            {displayAccountType(account)}
                           </Badge>
                         </td>
                         <td className="px-4 py-3">
@@ -725,7 +719,7 @@ function AccountsPageContent() {
                         </td>
                         <td className="px-4 py-3 text-xs leading-5 text-stone-500">
                           {(() => {
-                            const restore = formatRestoreAt(account.restoreAt);
+                            const restore = formatRestoreAt(account.restore_at);
                             return (
                               <div className="space-y-0.5">
                                 {restore.relative ? <div className="font-medium text-stone-700">{restore.relative}</div> : null}
