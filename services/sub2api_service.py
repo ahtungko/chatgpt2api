@@ -17,7 +17,7 @@ from services.account_service import account_service
 from services.config import DATA_DIR
 
 
-SUB2API_CONFIG_FILE = DATA_DIR / "sub2api_config.json"
+SUB2API_CONFIG_FILE = DATA_DIR / "sub2api_config.json" 
 
 # Cached JWT per server to avoid re-login on every list/import call.
 # Token lifetime on sub2api defaults to 24h; we refresh 5 min before expiry.
