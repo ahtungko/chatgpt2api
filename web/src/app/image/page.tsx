@@ -36,6 +36,7 @@ import {
   deleteImageConversation,
   getImageConversationStats,
   listImageConversations,
+  renameImageConversation,
   saveImageConversation,
   saveImageConversations,
   type ImageConversation,
@@ -688,6 +689,20 @@ function ImagePageContent({ isAdmin, storageScope }: { isAdmin: boolean; storage
     }
   };
 
+  const handleRenameConversation = async (id: string, title: string) => {
+    const nextConversations = conversations.map((item) =>
+      item.id === id ? { ...item, title, updatedAt: new Date().toISOString() } : item,
+    );
+    conversationsRef.current = sortImageConversations(nextConversations);
+    setConversations(conversationsRef.current);
+    try {
+      await renameImageConversation(id, title, storageScope);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : getMessages().toasts.renameConversationFailed;
+      toast.error(message);
+    }
+  };
+
   const openDeleteConversationConfirm = (id: string) => {
     setIsHistoryOpen(false);
     setDeleteConfirm({ type: "one", id });
@@ -1180,6 +1195,7 @@ function ImagePageContent({ isAdmin, storageScope }: { isAdmin: boolean; storage
             onClearHistory={openClearHistoryConfirm}
             onSelectConversation={setSelectedConversationId}
             onDeleteConversation={openDeleteConversationConfirm}
+            onRenameConversation={handleRenameConversation}
             formatConversationTime={formatConversationTimeValue}
             messages={messages}
           />
@@ -1211,6 +1227,7 @@ function ImagePageContent({ isAdmin, storageScope }: { isAdmin: boolean; storage
                   setIsHistoryOpen(false);
                 }}
                 onDeleteConversation={openDeleteConversationConfirm}
+                onRenameConversation={handleRenameConversation}
                 formatConversationTime={formatConversationTimeValue}
                 messages={messages}
                 hideActionButtons

@@ -23,6 +23,7 @@ export type ImagePageMessages = {
   sidebar: {
     loadingHistory: string;
     emptyHistory: string;
+    renameConversation: string;
     deleteConversation: string;
     turns: (count: number) => string;
     running: (count: number) => string;
@@ -95,6 +96,7 @@ export type ImagePageMessages = {
     missingRecoverableTaskId: string;
     someImagesFailed: (count: number) => string;
     readHistoryFailed: string;
+    renameConversationFailed: string;
     deleteConversationFailed: string;
     historyCleared: string;
     clearHistoryFailed: string;
@@ -136,6 +138,7 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
     sidebar: {
       loadingHistory: "正在读取会话记录",
       emptyHistory: "还没有图片记录，输入提示词后会在这里显示。",
+      renameConversation: "重命名会话",
       deleteConversation: "删除会话",
       turns: (count) => `${count} 轮`,
       running: (count) => `处理中 ${count}`,
@@ -215,6 +218,7 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
       missingRecoverableTaskId: "页面刷新或任务中断，未找到可恢复的任务 ID",
       someImagesFailed: (count) => `其中 ${count} 张未成功生成`,
       readHistoryFailed: "读取会话记录失败",
+      renameConversationFailed: "重命名失败",
       deleteConversationFailed: "删除会话失败",
       historyCleared: "已清空历史记录",
       clearHistoryFailed: "清空历史记录失败",
@@ -254,6 +258,7 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
     sidebar: {
       loadingHistory: "Loading conversation history",
       emptyHistory: "No image history yet. Your prompts will show up here after you generate something.",
+      renameConversation: "Rename conversation",
       deleteConversation: "Delete conversation",
       turns: (count) => `${count} turn${count === 1 ? "" : "s"}`,
       running: (count) => `Running ${count}`,
@@ -333,6 +338,7 @@ const IMAGE_PAGE_MESSAGES: Record<AppLocale, ImagePageMessages> = {
       missingRecoverableTaskId: "The page refreshed or the task was interrupted, and no recoverable task ID was found",
       someImagesFailed: (count) => `${count} image${count === 1 ? "" : "s"} failed to generate`,
       readHistoryFailed: "Failed to read conversation history",
+      renameConversationFailed: "Failed to rename the conversation",
       deleteConversationFailed: "Failed to delete the conversation",
       historyCleared: "History cleared",
       clearHistoryFailed: "Failed to clear history",
