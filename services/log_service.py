@@ -16,6 +16,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from services.config import DATA_DIR
+from services.protocol.error_response import anthropic_error_response, openai_error_response
 from utils.helper import anthropic_sse_stream, sse_json_stream
 
 LOG_TYPE_CALL = "call"
@@ -296,9 +297,8 @@ def _request_excerpt(text: object, limit: int = 1000) -> str:
 def _image_error_response(exc: Exception) -> JSONResponse:
     message = str(exc)
     if "no available image quota" in message.lower():
-        return JSONResponse(
-            status_code=429,
-            content={
+        return openai_error_response(
+            {
                 "error": {
                     "message": "no available image quota",
                     "type": "insufficient_quota",
@@ -306,20 +306,18 @@ def _image_error_response(exc: Exception) -> JSONResponse:
                     "code": "insufficient_quota",
                 }
             },
+            429,
         )
     if hasattr(exc, "to_openai_error") and hasattr(exc, "status_code"):
         return JSONResponse(status_code=int(exc.status_code), content=exc.to_openai_error())
-    return JSONResponse(
-        status_code=502,
-        content={
-            "error": {
-                "message": message,
-                "type": "server_error",
-                "param": None,
-                "code": "upstream_error",
-            }
-        },
-    )
+    return openai_error_response(message, 502)
+
+
+def _protocol_error_response(exc: Exception, status_code: int, sse: str) -> JSONResponse:
+    message = str(exc)
+    if sse == "anthropic":
+        return anthropic_error_response(message, status_code)
+    return openai_error_response(message, status_code)
 
 
 def _next_item(items):
@@ -364,7 +362,7 @@ class LoggedCall:
                 raise
             except Exception as exc:
                 self.log(" failed", status="failed", error=str(exc))
-                raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
+                return _protocol_error_response(exc, 502, sse)
 
             if isinstance(result, dict):
                 if _is_image_endpoint(self.endpoint):
@@ -386,7 +384,7 @@ class LoggedCall:
                 raise
             except Exception as exc:
                 self.log(" failed", status="failed", error=str(exc))
-                raise HTTPException(status_code=502, detail={"error": str(exc)}) from exc
+                return _protocol_error_response(exc, 502, sse)
             if not has_first:
                 self.log(" stream ended")
                 finish_on_return = False
