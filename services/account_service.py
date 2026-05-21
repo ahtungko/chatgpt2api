@@ -336,7 +336,12 @@ class AccountService:
             return dict(account)
         return None
 
-    def fetch_remote_info(self, access_token: str, event: str = "fetch_remote_info") -> dict[str, Any] | None:
+    def fetch_remote_info(
+            self,
+            access_token: str,
+            event: str = "fetch_remote_info",
+            remove_invalid: bool = True,
+    ) -> dict[str, Any] | None:
         if not access_token:
             raise ValueError("access_token is required")
 
@@ -344,7 +349,10 @@ class AccountService:
             from services.openai_backend_api import InvalidAccessTokenError, OpenAIBackendAPI
             result = OpenAIBackendAPI(access_token).get_user_info()
         except InvalidAccessTokenError:
-            self.remove_invalid_token(access_token, event)
+            if remove_invalid:
+                self.remove_invalid_token(access_token, event)
+            else:
+                self.update_account(access_token, {"status": "异常", "quota": 0})
             raise
         return self.update_account(access_token, result)
 
@@ -359,7 +367,7 @@ class AccountService:
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {
-                executor.submit(self.fetch_remote_info, token, "refresh_accounts"): token
+                executor.submit(self.fetch_remote_info, token, "refresh_accounts", False): token
                 for token in access_tokens
             }
             for future in as_completed(futures):

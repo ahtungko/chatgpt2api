@@ -4,11 +4,13 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("CHATGPT2API_AUTH_KEY", "test-auth")
 
 from services.account_service import AccountService
 from services.auth_service import AuthService
+from services.config import config
 from services.storage.json_storage import JSONStorageBackend
 from utils.helper import anonymize_token
 
@@ -65,6 +67,38 @@ class AccountCapabilityTests(unittest.TestCase):
             self.assertEqual(updated["quota"], 0)
             self.assertEqual(updated["status"], "正常")
             self.assertTrue(updated["image_quota_unknown"])
+
+
+    def test_refresh_accounts_keeps_invalid_tokens_when_auto_remove_is_enabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            service = AccountService(JSONStorageBackend(Path(tmp_dir) / "accounts.json"))
+            service.add_accounts(["token-1"])
+
+            previous_config = dict(config.data)
+            config.data["auto_remove_invalid_accounts"] = True
+
+            try:
+                from services import openai_backend_api
+
+                class FakeOpenAIBackendAPI:
+                    def __init__(self, access_token: str = "") -> None:
+                        self.access_token = access_token
+
+                    def get_user_info(self) -> dict:
+                        raise openai_backend_api.InvalidAccessTokenError("needs relogin")
+
+                with patch.object(openai_backend_api, "OpenAIBackendAPI", FakeOpenAIBackendAPI):
+                    result = service.refresh_accounts(["token-1"])
+            finally:
+                config.data = previous_config
+
+            self.assertEqual(result["refreshed"], 0)
+            self.assertEqual(len(result["errors"]), 1)
+            self.assertEqual(len(result["items"]), 1)
+            self.assertEqual(result["items"][0]["access_token"], "token-1")
+            self.assertEqual(result["items"][0]["status"], "\u5f02\u5e38")
+            self.assertEqual(result["items"][0]["quota"], 0)
+            self.assertIsNotNone(service.get_account("token-1"))
 
 
 class TokenLogTests(unittest.TestCase):
