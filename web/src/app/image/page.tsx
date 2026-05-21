@@ -1089,7 +1089,7 @@ function ImagePageContent({ isAdmin, storageScope }: { isAdmin: boolean; storage
                 }
               : image,
           );
-          const derived = deriveTurnStatus({ ...turn, status: "queued", images });
+          const derived = deriveTurnStatus({ ...turn, status: "queued", images }, messagesRef.current);
           return {
             ...turn,
             ...derived,
